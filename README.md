@@ -11,11 +11,11 @@
 
 ### ✨ 项目简介
 **EverMate.AI** 是一个运行在您电脑上的 AI 宠物 / AI 朋友。  
-通过 [Ollama](https://ollama.com/) 调用本地大语言模型进行对话，默认不上传数据，尽量离线运行，像朋友一样长期陪伴您。
+通过 [Ollama](https://ollama.com/) 调用本地大语言模型进行对话，默认不上传数据，尽量离线运行，让AI像朋友一样长期陪伴您。
 
 ### 🧩 计划功能（Roadmap）
 - [ ] 本地聊天窗口（支持上下文记忆）
-- [ ] 多模型选择（Qwen、LLaMA、GPT-OSS-20B 等）
+- [ ] 多模型选择（Qwen、DeepSeek、GPT-OSS-20B 等）
 - [ ] 人格设定（可编辑 System Prompt）
 - [ ] 本地长期记忆（sqlite / json）
 - [ ] 语音输入与语音播报（Whisper + 本地 TTS）
@@ -49,7 +49,6 @@
 
 ### 🔒 隐私声明
 - 默认本地推理，不上传对话内容  
-- 未来提供显式 **联网 / 本地** 开关与状态指示
 
 ---
 
@@ -61,7 +60,7 @@ Powered by [Ollama](https://ollama.com/) and open LLMs, it prefers offline infer
 
 ### 🧩 Planned Features (Roadmap)
 - [ ] Local chat UI with context memory
-- [ ] Model picker (Qwen, LLaMA, GPT-OSS-20B, …)
+- [ ] Model picker (Qwen, DeepSeek, GPT-OSS-20B, …)
 - [ ] Editable persona (System Prompt)
 - [ ] Long-term local memory (sqlite / json)
 - [ ] Voice input & TTS (Whisper + local TTS)
@@ -95,7 +94,6 @@ Powered by [Ollama](https://ollama.com/) and open LLMs, it prefers offline infer
 
 ### 🔒 Privacy
 - Prefer local inference; no conversation uploads  
-- Future explicit **online / offline** switch and indicator
 
 ---
 
