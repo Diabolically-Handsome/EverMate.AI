@@ -1,7 +1,7 @@
 # 🐾 EverMate.AI (v1.0 coming soon)
 Your Local AI Pet & Friend · Privacy-first · Offline whenever possible
 
-**Language · Idioma · Langue · 言語**  
+**Language · 语言 ·Idioma · Langue · 言語**  
 [English (Canada)](README.en-CA.md) · [中文](README.zh-CN.md) · [Português (Brasil)](README.pt-BR.md) · [Français (Canada)](README.fr-CA.md) · [日本語](README.ja-JP.md)
 
 ---
