@@ -9,10 +9,6 @@ Your Local AI Pet & Friend · Privacy-first · Offline whenever possible
 ## Welcome
 This is the entry page. Pick your preferred language above to read the full README.
 
-## How to use this on GitHub
-- **Option A (recommended):** Keep this file as `README.md`. Visitors will see the language switch first.  
-- **Option B:** Rename your preferred localized file to `README.md` (e.g., `README.en-CA.md` → `README.md`) so it becomes the default. You can then rename this entry to `README.index.md` or remove it.
-
 ## Quick start (English summary)
 1. Run `python app.py` at the project root.  
 2. Two ways to use:  
