@@ -2,7 +2,7 @@
 Your Local AI Pet & Friend · Privacy-first · Offline whenever possible
 
 **Language · 语言 ·Idioma · Langue · 言語**  
-[English (Canada)](README.en-CA.md) · [中文](README.zh-CN.md) · [Português (Brasil)](README.pt-BR.md) · [Français (Canada)](README.fr-CA.md) · [日本語](README.ja-JP.md)
+[English](README.en-CA.md) · [中文](README.zh-CN.md) · [Português (Brasil)](README.pt-BR.md) · [Français](README.fr-CA.md) · [日本語](README.ja-JP.md)
 
 ---
 
