@@ -1,65 +1,187 @@
-# 🐾 EverMate.AI (v1.0 coming soon)
-Your Local AI Pet & Friend · Privacy-first · Offline whenever possible
+# 🐾 EverMate.AI — Your Local AI Companion
+**Privacy-first · Works offline · Actually remembers you over long-term conversations**
 
-[English (Canada)](README.en-CA.md) · [中文](README.zh-CN.md) · [Português (Brasil)](README.pt-BR.md) · [Français (Canada)](README.fr-CA.md) · [日本語](README.ja-JP.md)
+> _“An AI can be a long‑term confidant — if it can **remember**, **protect**, and **retrieve**.”_
 
-## ✨ What it is
-EverMate.AI makes **long‑term companionship chats** practical and under your control: runs locally by default, no uploads, and organizes your history with two signature ideas — **Three‑Tier Memory** + **Scalable Local Index**.
+<p align="center">
+  <a href="#-why-evermateai">Why</a> ·
+  <a href="#-signature-capabilities">Features</a> ·
+  <a href="#-quick-start-the-shortest-path">Quick Start</a> ·
+  <a href="#-how-it-works">How it Works</a> ·
+  <a href="#-tunables">Tunables</a> ·
+  <a href="#-privacy--local-first-checklist">Privacy</a> ·
+  <a href="#-faq">FAQ</a> ·
+  <a href="#-roadmap">Roadmap</a> ·
+  <a href="#-project-layout">Layout</a> ·
+  <a href="#-contributing">Contributing</a>
+</p>
 
-## 🍱 Signature features
-### 1) Three‑Tier Memory (Core → Persona → Vault)
-- **Core**: high‑frequency topics + style/response cues (e.g., call you “you/您”, include examples, keep a warm tone). Most questions hit Core first — faster and steadier.  
-- **Persona**: communication preferences, info density, long‑term interests, do’s & don’ts — distilled into ≤8 bullets. Uses a local LLM via Ollama when available; otherwise falls back to heuristics.  
-- **Vault**: everything else is stored **in chunks on disk** and retrieved on demand — no giant doc, just short, precise evidence.  
-- **Conflict rule**: if history disagrees with your **current input**, current takes precedence.
+---
+
+## ✨ Why EverMate.AI?
+Most online AIs suffer from two pain points:  
+1) **Short memory:** once the context window overflows, you start a new chat and lose your past self.  
+2) **Opaque privacy:** was your conversation uploaded, trained on, or analyzed? Hard to know.
+
+**EverMate.AI** answers with **local storage & inference by default**, turning “long-term companion chat” into something **usable and controllable**. Two core ideas power the experience:
+
+- **The Memory Ternary (_Core → Persona → Vault_)** — human‑like layered storage for speed **and** accuracy.  
+- **Scalable Local Index (_Large‑scale · Local · Fast_)** — chunk‑on‑disk + inverted index + BM25 retrieval with inline evidence snippets.
+
+Result: high‑frequency topics are always at hand, and long‑tail memories are one query away — **entirely on your machine**.
+
+> Even if you only reuse the ideas here, we hope this repo sparks better, safer long‑term AI companions for everyone.
+
+---
+
+## 🍱 Signature Capabilities
+### 1) Memory Ternary (Core → Persona → Vault)
+- **Core (high‑frequency memory):** topics you bring up often + assistant style cues (e.g., address the user respectfully, include examples, keep a gentle tone). Most queries hit Core directly — **fast and stable**.
+- **Persona (≤ 8 bullets):** communication preferences, info density, long‑term interests and no‑gos. Prefer **local LLM** summarization; fall back to heuristics if not available.
+- **Vault (long‑tail memory):** everything else stored **as small disk chunks** and retrieved via **BM25**, with the **best original sentence** injected as evidence.
+- **Conflict rule:** when history disagrees with the current input, **prefer the current input**. Don’t let stale memory derail you.
 
 ### 2) Scalable Local Index (Large‑scale · Local · Fast)
-- **Chunking**: ~2.8K chars per chunk (tweakable), built for millions of words.  
-- **Inverted index**: SQLite tables for `terms/postings/chunks`, WAL mode for robust R/W.  
-- **BM25 retrieval**: rank candidate chunks, then lift the **best original sentence** as supporting evidence.  
-- **Streaming build & incremental updates**: drag‑and‑drop `.docx/.txt` to build as we read; new chats append per turn and refresh Core/Persona periodically.
+- **Chunk‑on‑disk:** ~**2.8K characters per chunk** (configurable), scales from 100K to multi‑million characters.
+- **Inverted index:** SQLite with `terms/postings/chunks`, WAL‑safe read/write.
+- **BM25 retrieval:** after hit, **extract the best sentence** inside the chunk as an evidence snippet.
+- **Streaming build & incremental refresh:** drag‑drop `.docx/.txt` to ingest while indexing; chatting appends turns to disk; refresh Core/Persona after a threshold.
 
-## 🚀 Quick start
-1. `python app.py` in the project directory.  
-2. Two paths:  
-   - **Import history**: drag `.docx/.txt` on the import screen, click “Build/Rebuild Memory”, then start chatting.  
-   - **New friend**: just chat. Each turn (“you ask + AI answers”) is appended to the index; Core/Persona refresh after thresholds.  
-3. Optional: configure **Ollama** (`OLLAMA_URL`, `OLLAMA_MODEL`) to refine Persona locally.
+### 3) 10‑second mental model
+> **Hit with Core** for frequent patterns → **shape with Persona** → **prove with Vault evidence**. Short contexts, strong answers.
 
-## 💼 How it works (in one line)
-Start with **Core** for style & frequent topics → use **Persona** for your taste → pull **Vault** for citations. **Short, relevant context** wins.
+---
 
-## 🧲 Import vs. New (same engine)
-- **Drag‑and‑drop**: `.docx` parsed via stdlib; `.txt` read as a stream.  
-- **New friend**: `append_turn` writes incrementally; default refresh every **20** new chunks.
+## 🚀 Quick Start (the **shortest path**)
+> These are reference commands for your README homepage. Adjust to your packaging later (Python/Docker/etc.).
+
+### Option A — Local (Python)
+```bash
+# 1) From the project root
+python app.py
+
+# Optional: point to your local LLM for Persona summarization
+export OLLAMA_URL="http://localhost:11434"
+export OLLAMA_MODEL="qwen2.5:7b-instruct"
+```
+
+Then open the UI and either:
+- **Import history:** drag‑drop `.docx/.txt` → click **Build/Rebuild Memory** → start chatting.  
+- **Start a new friend:** just chat; each Q&A turn is appended to the index. After N new chunks (default **20**), Core/Persona auto‑refresh.
+
+### Option B — Docker (placeholder)
+```bash
+# Example placeholder; replace <you> with your org/repo later
+docker run --rm -it -p 7860:7860   -e OLLAMA_URL="http://host.docker.internal:11434"   -v $PWD/memory:/app/memory   ghcr.io/<you>/evermate:latest
+```
+
+---
+
+## 💼 How it Works (Mermaid diagram)
+```mermaid
+flowchart LR
+    I[Input] --> C(Core)
+    I --> P(Persona)
+    I --> V(Vault)
+    V --> R[BM25 Retrieval]
+    R --> S[Best-sentence Evidence]
+    C --> G[Answer Generator]
+    P --> G
+    S --> G
+```
+- **Short‑circuit first:** if Core/Persona can answer, don’t bloat the context.
+- **Evidence injection:** when “recall” is needed, inject the best original sentence for **verifiability**.
+
+---
+
+## 🧲 Import vs. New (two paths, one engine)
+- **Drag‑drop import:** `.docx` via stdlib parser; `.txt` via streaming read. After full indexing, answers are backed by the Memory Ternary.  
+- **New friend:** `append_turn` adds every Q&A; Core/Persona refresh every **20** new chunks by default.
+
+---
 
 ## 🔧 Tunables
-`CHUNK_CHARS`=2800 · `CORE_TOP_TERMS`=50 · `PERSONA_MAX_BULLETS`=8 · `REFRESH_EVERY`=20 · `retrieve(query,k)`=4–8
+- `CHUNK_CHARS` — default **2800**. Larger = fewer chunks; smaller = finer recall.
+- `CORE_TOP_TERMS` — default **50** (top frequent terms shown in Core).
+- `PERSONA_MAX_BULLETS` — default **8**.
+- `REFRESH_EVERY` — default **20** (auto‑refresh for Core/Persona after N new chunks).
+- Retrieval **Top‑K** — `retrieve(query, k)`, recommended **4–8**.
 
-## 🛡️ Privacy & local‑first
-Runs and stores data locally; no uploads by default. If you switch to remote models, review your network/compliance posture. Encrypt & back up the `memory` folder.
+**Environment variables (examples)**
+```bash
+# Local LLM (optional)
+export OLLAMA_URL="http://localhost:11434"
+export OLLAMA_MODEL="qwen2.5:7b-instruct"
 
-## ❓FAQ (about the signature features)
-- Persona hasn’t changed? Likely below the refresh threshold — keep chatting or rebuild; you can also lower `REFRESH_EVERY`.  
-- Want the **original wording**? Yes — Vault returns the most relevant sentence/snippet.  
-- Index keeps growing? Increase `CHUNK_CHARS`, archive older `chunks`, or split `memory` per friend.  
-- No local LLM? Only Persona quality is affected; heuristics keep the flow stable.  
-- Feeling “stuck” to history? Current input overrides; you can also tweak `01_core.md` / `02_persona.md` then rebuild.
+# Memory root
+export MEMORY_DIR="./memory"
+```
+
+---
+
+## 🛡️ Privacy & Local‑first (Checklist)
+- ✅ **Local storage & inference by default** (can pair with a local LLM).  
+- ✅ Index & memory live under `memory/`; consider encryption & periodic backups.  
+- ⚠️ If you switch to remote models, **assess network and compliance**.  
+- 🔒 Suggested ops:
+  - Disk encryption for `memory/`
+  - Split sensitive dialogs into separate `memory` roots
+  - Curate `01_core.md / 02_persona.md` + rebuild to prune stale entries
+  - Prefer **offline runs** when feasible
+
+---
+
+## ❓ FAQ (focused on the signature features)
+- **Persona didn’t change yet?**  
+  Likely didn’t hit the refresh threshold. Keep chatting, rebuild manually, or lower `REFRESH_EVERY`.
+- **Can I see the “original evidence”?**  
+  Yes — long‑tail retrieval injects the most relevant original sentence/fragment.
+- **Index keeps growing?**  
+  Raise `CHUNK_CHARS`, archive old chunks periodically, or split friends into separate `memory` roots.
+- **No local LLM available?**  
+  Only Persona summarization is affected; heuristics kick in — the pipeline keeps working.
+- **Stuck in old memory?**  
+  The system always **prefers the current input**; also curate `01_core.md / 02_persona.md` and rebuild.
+
+---
 
 ## 🗺️ Roadmap
-Hybrid retrieval (BM25 + local embeddings), topic buckets & timeline, explainability panel, memory decay, event cards.
+- Hybrid retrieval: **BM25 + local vectors** (bge/e5)  
+- Topic bucketing & timeline views for the Vault  
+- Explainability panel: show which Core/Persona/Vault items fired this round  
+- Memory decay & conflict resolution with explicit “prefer current input”  
+- Event extraction: card‑style facts for structured recall & reviews
 
-## 📦 Layout
+---
+
+## 📦 Project Layout
 ```
 memory/
   index.sqlite    # inverted index & stats
-  chunks/         # chunked text
-  uploads/        # imported files
+  chunks/         # text chunks on disk
+  uploads/        # copies of imported files
   buffer.txt      # incremental buffer
-  01_core.md      # core memory (freq & style)
-  02_persona.md   # persona bullets
-  03_vault.md     # vault note (dynamic retrieval)
+  01_core.md      # Core memory (high-frequency, style cues)
+  02_persona.md   # Persona (≤ 8 bullets)
+  03_vault.md     # Long-tail notes (dynamically retrieved)
 ```
 
+---
+
+## 🤝 Contributing
+We welcome Issues/PRs for:
+- Improvements to the **Memory Ternary**
+- Adapters & parameter recipes for different local LLMs
+- Retrieval/ranking/fusion experiments and best practices
+
+Please also see `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, and `SECURITY.md` (add these when ready).
+
+---
+
 ## 📜 License
-MIT (see repository LICENSE)
+MIT (see `LICENSE` in the repo).
+
+---
+
+## 🌱 Inspiration
+Even if this project never ships a full product, the ideas are free to reuse. If anything here helps you build better privacy‑first companions, that’s a win already. If you do ship something, consider sending a PR or a note — we’d love to learn from your journey.
