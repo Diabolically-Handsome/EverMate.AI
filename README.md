@@ -66,9 +66,9 @@ We do not treat EverMate.AI as a "trust me" memory demo. The project includes re
 
 | Corpus Scale | Benchmark Shape | Result |
 | --- | --- | --- |
-| ~360k characters | 77-question cloze recall | **97.40%** |
-| ~860k characters | 77-question hard-mode mixed recall | **81.82%** |
-| ~5.36m characters | 77-question novel accuracy benchmark | **76.62%** overall |
+| ~36万 characters | 77-question cloze recall | **97.40%** |
+| ~86万 characters | 77-question hard-mode mixed recall | **81.82%** |
+| ~536万 characters | 77-question novel accuracy benchmark | **76.62%** overall |
 
 ### Latest large-novel run
 - Corpus size: **5,367,383 characters**
@@ -149,6 +149,45 @@ Outputs will be written under `reports/` as:
 
 ---
 
+## 🍎 macOS App & DMG
+### Install (test build)
+- Download the generated `EverMate-macOS-arm64.dmg`
+- Open the DMG and drag `EverMate.app` into `Applications`
+- The current test build is **ad-hoc signed** for bundle integrity, but it is **not Apple notarized**
+- Because of that, the first launch may still be blocked by Gatekeeper
+
+### First Launch On macOS
+1. Open `Applications`
+2. Find `EverMate.app`
+3. Right-click the app and choose `Open`
+4. When macOS shows the warning dialog, click `Open`
+5. After that first approval, you can launch EverMate normally by double-clicking
+
+If macOS still blocks the app:
+1. Try the same `Right-click -> Open` path one more time
+2. Or go to `System Settings -> Privacy & Security`
+3. Scroll to the security section and click `Open Anyway` for EverMate
+4. Re-open the app and confirm once
+
+### Runtime expectations
+- The packaged macOS app is built for **Apple Silicon**
+- **Ollama is not bundled**; start your local Ollama server separately if you want local model-backed chat and memory analysis
+- Bundled builds store writable data outside the app bundle under:
+  - `~/Library/Application Support/EverMate/memory`
+
+### Maintainer build
+```bash
+./scripts/build_macos_dmg.sh
+```
+
+Build outputs:
+- `dist/EverMate.app`
+- `dist/EverMate-macOS-arm64.dmg`
+- `dist/EverMate-macOS-arm64-signing-report.txt`
+- More maintainer notes: `PACKAGING.md`
+
+---
+
 ## 💼 How it Works (Mermaid diagram)
 ```mermaid
 flowchart LR
@@ -186,7 +225,7 @@ flowchart LR
 export OLLAMA_URL="http://localhost:11434"
 export OLLAMA_MODEL="qwen2.5:7b-instruct"
 
-# Memory root (default: ./memory; falls back to ~/.evermate/memory if not writable)
+# Memory root (default: ./memory in source runs; bundled macOS builds use ~/Library/Application Support/EverMate/memory)
 export MEMORY_DIR="./memory"
 ```
 
