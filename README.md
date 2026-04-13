@@ -66,16 +66,16 @@ We do not treat EverMate.AI as a "trust me" memory demo. The project includes re
 
 | Corpus Scale | Benchmark Shape | Result |
 | --- | --- | --- |
-| ~36万 characters | 77-question cloze recall | **97.40%** |
-| ~86万 characters | 77-question hard-mode mixed recall | **81.82%** |
-| ~536万 characters | 77-question novel accuracy benchmark | **76.62%** overall |
+| ~360K characters | 77-question cloze recall | **97.40%** |
+| ~860K characters | 77-question hard-mode mixed recall | **81.82%** |
+| ~5.36M characters | 77-question novel accuracy benchmark | **76.62%** overall |
 
 ### Latest large-novel run
 - Corpus size: **5,367,383 characters**
 - Paragraphs: **106,993**
 - Indexed chunks: **1,927**
 - Indexed terms: **311,133**
-- Answer model: `hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q8_0`
+- Answer model: `hf.co/google/gemma-4-26B-A4B`
 - Overall accuracy: **76.62%**
 - By type:
   - `cloze`: **83.65%**
