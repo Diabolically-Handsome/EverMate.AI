@@ -6,6 +6,7 @@
 <p align="center">
   <a href="#-why-evermateai">Why</a> ·
   <a href="#-signature-capabilities">Features</a> ·
+  <a href="#-validation--benchmarks">Benchmarks</a> ·
   <a href="#-quick-start-the-shortest-path">Quick Start</a> ·
   <a href="#-how-it-works">How it Works</a> ·
   <a href="#-tunables">Tunables</a> ·
@@ -47,8 +48,55 @@ Result: high‑frequency topics are always at hand, and long‑tail memories are
 - **BM25 retrieval:** after hit, **extract the best sentence** inside the chunk as an evidence snippet.
 - **Streaming build & incremental refresh:** drag‑drop `.docx/.txt` to ingest while indexing; chatting appends turns to disk; refresh Core/Persona after a threshold.
 
-### 3) 10‑second mental model
+### 3) 10-second mental model
 > **Hit with Core** for frequent patterns → **shape with Persona** → **prove with Vault evidence**. Short contexts, strong answers.
+
+---
+
+## 📊 Validation & Benchmarks
+We do not treat EverMate.AI as a "trust me" memory demo. The project includes reproducible local benchmarks that measure factual recall, short-answer grounding, and multi-hop consistency on long-form corpora.
+
+### What we measure
+- **Cloze recall:** can the system retrieve and complete an exact fact from long context?
+- **Grounded short QA:** can it answer short factual questions without drifting?
+- **Multi-hop consistency:** can it combine evidence across chunks without mixing nearby events?
+
+### Recent benchmark snapshots
+> To avoid overstating the results, the numbers below are reported by **character count** rather than vague "book length" claims.
+
+| Corpus Scale | Benchmark Shape | Result |
+| --- | --- | --- |
+| ~36万 characters | 77-question cloze recall | **97.40%** |
+| ~86万 characters | 77-question hard-mode mixed recall | **81.82%** |
+| ~536万 characters | 77-question novel accuracy benchmark | **76.62%** overall |
+
+### Latest large-novel run
+- Corpus size: **5,367,383 characters**
+- Paragraphs: **106,993**
+- Indexed chunks: **1,927**
+- Indexed terms: **311,133**
+- Answer model: `hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q8_0`
+- Overall accuracy: **76.62%**
+- By type:
+  - `cloze`: **83.65%**
+  - `grounded_short_qa`: **70.00%**
+  - `multi_hop_consistency`: **50.00%**
+
+### Artifacts
+- Benchmarks write:
+  - question banks
+  - structured JSON results
+  - human-readable Markdown or text reports
+- Current benchmark scripts:
+  - `scripts/validate_memory_cloze.py`
+  - `scripts/validate_memory_hardmode.py`
+  - `scripts/validate_memory_accuracy.py`
+- Generated reports live under `reports/`.
+
+### Why these numbers matter
+- The system is already strong at **single-fact recall** on very large corpora.
+- The current main bottleneck is **cross-chunk retrieval and multi-hop consistency**.
+- That gives the project a concrete research direction instead of a vague promise.
 
 ---
 
@@ -58,6 +106,9 @@ Result: high‑frequency topics are always at hand, and long‑tail memories are
 ### Option A — Local (Python)
 ```bash
 # 1) From the project root
+pip install -r requirements.txt
+
+# 2) Start
 python app.py
 
 # Optional: point to your local LLM for Persona summarization
@@ -74,6 +125,27 @@ Then open the UI and either:
 # Example placeholder; replace <you> with your org/repo later
 docker run --rm -it -p 7860:7860   -e OLLAMA_URL="http://host.docker.internal:11434"   -v $PWD/memory:/app/memory   ghcr.io/<you>/evermate:latest
 ```
+
+### Benchmark Example
+```bash
+# 77-question large-corpus accuracy run
+export GOOGLE_API_KEY="your_key_here"
+
+python scripts/validate_memory_accuracy.py \
+  --docx /path/to/novel.docx \
+  --questions 77 \
+  --cloze-questions 52 \
+  --short-qa-questions 15 \
+  --multi-hop-questions 10 \
+  --judge-provider google \
+  --judge-model gemini-3.1-pro-preview
+```
+
+Outputs will be written under `reports/` as:
+- `*-accuracy-question-bank.json`
+- `*-accuracy-question-bank.md`
+- `*-accuracy-results.json`
+- `*-accuracy-report.md`
 
 ---
 
@@ -97,6 +169,7 @@ flowchart LR
 ## 🧲 Import vs. New (two paths, one engine)
 - **Drag‑drop import:** `.docx` via stdlib parser; `.txt` via streaming read. After full indexing, answers are backed by the Memory Ternary.  
 - **New friend:** `append_turn` adds every Q&A; Core/Persona refresh every **20** new chunks by default.
+- **Session auto-save:** when closing the app, GUI state is saved automatically and restored on next launch.
 
 ---
 
@@ -113,7 +186,7 @@ flowchart LR
 export OLLAMA_URL="http://localhost:11434"
 export OLLAMA_MODEL="qwen2.5:7b-instruct"
 
-# Memory root
+# Memory root (default: ./memory; falls back to ~/.evermate/memory if not writable)
 export MEMORY_DIR="./memory"
 ```
 
