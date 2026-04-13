@@ -68,7 +68,7 @@ We do not treat EverMate.AI as a "trust me" memory demo. The project includes re
 | --- | --- | --- |
 | ~360K characters | 77-question cloze recall | **97.40%** |
 | ~860K characters | 77-question hard-mode mixed recall | **81.82%** |
-| ~5.36M characters | 77-question novel accuracy benchmark | **76.62%** overall |
+| ~5.36M characters | 77-question novel accuracy benchmark | **84.42%** with EverMate V1.1 & GPT-OSS 20B |
 
 ### Latest large-novel run
 - Corpus size: **5,367,383 characters**
