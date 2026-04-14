@@ -76,9 +76,9 @@ We do not treat EverMate.AI as a "trust me" memory demo. The project includes re
 - Indexed chunks: **1,927**
 - Indexed terms: **311,133**
 - Answer model: `hf.co/google/gemma-4-26B-A4B`
-- Overall accuracy: **76.62%**
+- Overall accuracy: **84.42%**
 - By type:
-  - `cloze`: **83.65%**
+  - `cloze`: **100.00%**
   - `grounded_short_qa`: **70.00%**
   - `multi_hop_consistency`: **50.00%**
 
