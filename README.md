@@ -75,7 +75,7 @@ We do not treat EverMate.AI as a "trust me" memory demo. The project includes re
 - Paragraphs: **106,993**
 - Indexed chunks: **1,927**
 - Indexed terms: **311,133**
-- Answer model: `openai/gpt-oss-120b`
+- Answer model: `openai/gpt-oss-20b`
 - Overall accuracy: **96.10%**
 - By type:
   - `cloze`: **100.00%**
