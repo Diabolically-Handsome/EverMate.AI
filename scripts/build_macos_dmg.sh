@@ -61,7 +61,7 @@ fi
 
 source "${VENV_DIR}/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r "${ROOT}/requirements.txt" pyinstaller
+python -m pip install -r "${ROOT}/requirements.txt" "pyinstaller~=6.11"
 xattr -cr "${ROOT}/assets" "${VENV_DIR}" || true
 
 echo "[2/6] Generating macOS app icon..."
