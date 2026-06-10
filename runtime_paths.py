@@ -79,7 +79,11 @@ def migrate_legacy_memory_dir(target: str) -> bool:
     if not (legacy / "index.sqlite").exists():
         return False
     target_path.mkdir(parents=True, exist_ok=True)
-    for item in legacy.iterdir():
+    # index.sqlite is the migration sentinel (its presence in the target
+    # suppresses future runs), so copy it last — a crash mid-migration then
+    # resumes instead of orphaning chunks/uploads.
+    items = sorted(legacy.iterdir(), key=lambda p: p.name == "index.sqlite")
+    for item in items:
         dest = target_path / item.name
         if dest.exists():
             continue

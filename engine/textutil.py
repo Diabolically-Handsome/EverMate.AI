@@ -102,8 +102,13 @@ def query_flags(query: str) -> Dict[str, bool]:
 
 
 _RECALL_PATTERNS = re.compile(
-    r"还记得|记得|上次|之前|那次|当时|我说过|我提过|我们聊过|说过什么"
-    r"|do you remember|did i (say|mention|tell)|last time|previously",
+    r"还记得|记得|上次|上回|之前|那次|那天|当时|昨天.{0,12}[吗么?？]"
+    r"|我说过|我提过|我提到过|我告诉过你|我们聊过|我们说过|我们谈过"
+    r"|聊了什么|说了什么|谈了什么|讲了什么|说过什么"
+    r"|你知道我|你了解我|我的(名字|生日|爱好|偏好|习惯)"
+    r"|do you remember|did (i|we) (say|mention|tell|talk|discuss)"
+    r"|what did (i|we) (say|talk|discuss|mention)|last time|previously"
+    r"|remind me (what|about)|you know (me|my)|my (name|birthday|favorite|preference)",
     re.IGNORECASE,
 )
 
@@ -141,8 +146,11 @@ def conflict_markers(snippets: List[str]) -> List[str]:
     for s in snippets:
         if not s:
             continue
-        numbers.update(_NUM_RE.findall(s))
         dates.update(m.group(0) for m in _DATE_RE.finditer(s))
+        # Date components are not standalone numbers; strip them first so a
+        # single "2023年5月" doesn't read as three conflicting values.
+        without_dates = _DATE_RE.sub(" ", s)
+        numbers.update(_NUM_RE.findall(without_dates))
     if len(dates) >= 2:
         markers.append("日期")
     elif len(numbers) >= 4:

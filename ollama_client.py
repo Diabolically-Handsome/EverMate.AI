@@ -28,9 +28,16 @@ def default_model() -> str:
 OLLAMA_URL = ollama_url()
 DEFAULT_MODEL = default_model()
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 # The Ollama default context window (4k) silently truncates long prompts from
 # the top — which is exactly where EverMate injects memory evidence.
-DEFAULT_NUM_CTX = int(os.getenv("EVERMATE_NUM_CTX", "8192"))
+DEFAULT_NUM_CTX = _env_int("EVERMATE_NUM_CTX", 8192)
 
 # Companion chats are intermittent; keep the model warm between turns instead
 # of paying a cold load every few minutes.
@@ -69,9 +76,10 @@ def clean_response_text(text: str) -> str:
     """Strip reasoning-channel artifacts from a complete model reply.
 
     Closed ``<think>…</think>`` blocks are removed. An unclosed ``<think>``
-    means the model was cut off while still reasoning — there is no answer in
-    the remainder, so the result is empty and the caller decides how to
-    recover (retry, fallback, or an honest error message).
+    means the model was cut off while still reasoning — everything from that
+    tag onward is dropped (text before it, if any, is kept). A reply that was
+    entirely reasoning therefore comes back empty, and the caller decides how
+    to recover (retry, fallback, or an honest error message).
     """
 
     cleaned = (text or "").strip()
@@ -99,6 +107,11 @@ class ThinkTagFilter:
 
     OPEN = "<think>"
     CLOSE = "</think>"
+    # Regex search keeps indices aligned with the original buffer; lowercasing
+    # the buffer for find() breaks alignment for characters whose lowercase
+    # form has a different length (e.g. 'İ').
+    _OPEN_RE = re.compile(re.escape(OPEN), re.IGNORECASE)
+    _CLOSE_RE = re.compile(re.escape(CLOSE), re.IGNORECASE)
 
     def __init__(self):
         self._buf = ""
@@ -109,23 +122,23 @@ class ThinkTagFilter:
         out: List[str] = []
         while True:
             if self._in_think:
-                end = self._buf.lower().find(self.CLOSE)
-                if end < 0:
+                m = self._CLOSE_RE.search(self._buf)
+                if not m:
                     keep = _partial_suffix_len(self._buf, self.CLOSE)
                     self._buf = self._buf[len(self._buf) - keep:] if keep else ""
                     return "".join(out)
-                self._buf = self._buf[end + len(self.CLOSE):]
+                self._buf = self._buf[m.end():]
                 self._in_think = False
                 continue
-            start = self._buf.lower().find(self.OPEN)
-            if start < 0:
+            m = self._OPEN_RE.search(self._buf)
+            if not m:
                 keep = _partial_suffix_len(self._buf, self.OPEN)
                 cut = len(self._buf) - keep
                 out.append(self._buf[:cut])
                 self._buf = self._buf[cut:]
                 return "".join(out)
-            out.append(self._buf[:start])
-            self._buf = self._buf[start + len(self.OPEN):]
+            out.append(self._buf[: m.start()])
+            self._buf = self._buf[m.end():]
             self._in_think = True
 
     def flush(self) -> str:
@@ -146,7 +159,9 @@ def _error_from_response(r: requests.Response, model: str) -> OllamaError:
     except Exception:
         detail = (r.text or "")[:300]
     lowered = detail.lower()
-    if "not found" in lowered and ("model" in lowered or r.status_code == 404):
+    # Require an explicit model-not-found message: a bare 404 can come from
+    # any non-Ollama server behind a misconfigured OLLAMA_URL.
+    if "not found" in lowered and "model" in lowered:
         return OllamaModelNotFoundError(model, detail)
     return OllamaError(detail or f"Ollama returned HTTP {r.status_code}")
 

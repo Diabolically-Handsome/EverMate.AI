@@ -240,6 +240,7 @@ export MEMORY_DIR="/path/to/memory"
 app.py                  # entry point
 engine/                 # the memory engine (see How it Works)
 views/                  # Qt UI (chat page, main window)
+assets/                 # stylesheets (light/dark) and icons — required at runtime
 ollama_client.py        # local LLM client: streaming, errors, think-filtering
 models_config.py        # recommended model resolution
 runtime_paths.py        # per-user data dir, resource paths

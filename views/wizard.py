@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 from engine.storage import write_text
 from i18n_qt import tr, APP_TITLE
 from runtime_paths import resource_path, user_app_support_root
-from .chat import ChatPage
+from .chat import ChatPage, InstanceLockedError
 
 def _load_stylesheet(theme: str) -> str:
     fname = resource_path("assets", f"style_{theme}.qss")
@@ -63,17 +63,17 @@ class MainWindow(QMainWindow):
 
         self.stack = QStackedWidget()
         self.page_welcome = self._build_welcome()
-        self.page_chat = ChatPage(on_change_lang=self._on_change_lang, on_change_theme=self._on_change_theme)
-        self.stack.addWidget(self.page_welcome)
-        self.stack.addWidget(self.page_chat)
-
-        if not self.page_chat.mm.acquire_instance_lock():
+        try:
+            self.page_chat = ChatPage(on_change_lang=self._on_change_lang, on_change_theme=self._on_change_theme)
+        except InstanceLockedError:
             QMessageBox.critical(
                 self,
-                tr(self.page_chat.lang, "instance_locked_title"),
-                tr(self.page_chat.lang, "instance_locked_body"),
+                tr(self.lang, "instance_locked_title"),
+                tr(self.lang, "instance_locked_body"),
             )
             sys.exit(1)
+        self.stack.addWidget(self.page_welcome)
+        self.stack.addWidget(self.page_chat)
 
         # Persist state shortly after every meaningful change, not only on a
         # clean close — a crash used to lose the whole session.
