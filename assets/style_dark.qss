@@ -239,6 +239,12 @@ QLabel#DropArea:hover {
     border-color: #56a894;
 }
 
+QLabel#DropArea[dragover="true"] {
+    background: #213029;
+    border: 2px dashed #56a894;
+    color: #56a894;
+}
+
 QScrollBar:vertical {
     background: transparent;
     width: 10px;

@@ -46,6 +46,64 @@ TEXTS = {
         "memory_last_analyze_none": "无",
         "core_memory_prompt": "以下是用户的核心记忆：",
         "persona_memory_prompt": "以下是用户画像：",
+        # --- chat page ---
+        "tagline": "本地长记忆工作台",
+        "theme": "主题",
+        "memory": "记忆状态",
+        "chunks": "片段",
+        "terms": "术语",
+        "uploads": "文件",
+        "last": "最近",
+        "memory_root_ready": "记忆目录已就绪",
+        "analyze": "分析记忆",
+        "clear": "清空",
+        "chat": "聊天",
+        "chat_subtitle": "本地记忆、模型与对话在这里汇合。",
+        "ready": "就绪",
+        "thinking": "思考中",
+        "building": "构建中",
+        "analyzing": "分析中",
+        "refreshing_memory": "记忆整理中",
+        "you": "您",
+        "assistant_name": "小枢",
+        "empty_title": "准备好了",
+        "empty_body": "选择模型后开始对话，或先导入记忆文件。",
+        "no_pending_files": "暂无待导入文件",
+        "pending_files": "待导入文件",
+        "more_suffix": "更多",
+        "forget_menu": "记忆管理",
+        "forget_chat": "清除聊天记忆",
+        "forget_chat_confirm": "确定要清除所有聊天记录与由聊天产生的记忆吗？已导入的文档会保留。此操作不可撤销。",
+        "manage_uploads": "管理已导入文档",
+        "delete_upload_confirm": "确定要删除文档「{name}」并从记忆中移除其内容吗？",
+        "no_uploads": "（还没有导入任何文档）",
+        "delete": "删除",
+        "close": "关闭",
+        "wipe_all": "清空全部记忆",
+        "wipe_all_confirm": "确定要清空全部记忆吗？包括聊天记录、导入的文档、Core 与 Persona。此操作不可撤销。",
+        "done": "完成",
+        "memory_error_title": "记忆错误",
+        "memory_write_failed": "写入记忆失败（对话仍可继续）：",
+        "memory_prompt_failed": "构建记忆提示失败，将继续无记忆对话：",
+        "import_nothing": "未导入任何新文件（仅支持 .txt/.docx；重复内容会自动跳过）。",
+        "build_done": "记忆构建完成",
+        "build_stats": "片段：{chunks}\n术语：{terms}\n文件：{uploads}",
+        "ollama_error_title": "Ollama 错误",
+        "ollama_down_title": "未检测到 Ollama 服务",
+        "ollama_down_body": (
+            "EverMate 需要本地 Ollama 来驱动对话。\n\n"
+            "1. 安装：访问 https://ollama.com/download 或执行 brew install ollama\n"
+            "2. 启动：打开 Ollama 应用，或在终端执行 ollama serve\n"
+            "3. 下载模型：例如 ollama pull deepseek-r1:8b\n\n"
+            "完成后回到这里重新发送即可。"
+        ),
+        "model_missing_title": "模型未安装",
+        "model_missing_body": "未检测到所选模型，请先在终端执行：\n\n  ollama pull {model}\n",
+        "reply_truncated": "（模型输出被截断，未能生成有效回答。请重试，或换一个模型。）",
+        "send_failed_restored": "发送失败，输入内容已恢复。",
+        "instance_locked_title": "EverMate 已在运行",
+        "instance_locked_body": "检测到另一个 EverMate 实例正在使用同一记忆目录。请先关闭它再启动新的实例。",
+        "uploads_dialog_title": "已导入文档",
     },
     "en": {
         "welcome_to": "Welcome to",
@@ -91,9 +149,74 @@ TEXTS = {
         "memory_last_analyze_none": "None",
         "core_memory_prompt": "Here are the user's core memories:",
         "persona_memory_prompt": "Here is the user persona summary:",
-    }
+        # --- chat page ---
+        "tagline": "Local memory workspace",
+        "theme": "Theme",
+        "memory": "Memory",
+        "chunks": "Chunks",
+        "terms": "Terms",
+        "uploads": "Uploads",
+        "last": "Last",
+        "memory_root_ready": "Memory root ready",
+        "analyze": "Analyze",
+        "clear": "Clear",
+        "chat": "Chat",
+        "chat_subtitle": "Local memory, model routing, and chat in one workspace.",
+        "ready": "Ready",
+        "thinking": "Thinking",
+        "building": "Building",
+        "analyzing": "Analyzing",
+        "refreshing_memory": "Refreshing memory",
+        "you": "You",
+        "assistant_name": "EverMate",
+        "empty_title": "Ready when you are",
+        "empty_body": "Choose a model, start chatting, or import memory files first.",
+        "no_pending_files": "No pending files",
+        "pending_files": "Pending files",
+        "more_suffix": "more",
+        "forget_menu": "Memory tools",
+        "forget_chat": "Forget chat memory",
+        "forget_chat_confirm": "Erase all chat history and chat-derived memory? Imported documents are kept. This cannot be undone.",
+        "manage_uploads": "Manage imported documents",
+        "delete_upload_confirm": "Delete document \"{name}\" and remove its content from memory?",
+        "no_uploads": "(no documents imported yet)",
+        "delete": "Delete",
+        "close": "Close",
+        "wipe_all": "Wipe all memory",
+        "wipe_all_confirm": "Wipe ALL memory? This includes chat history, imported documents, Core, and Persona. This cannot be undone.",
+        "done": "Done",
+        "memory_error_title": "Memory Error",
+        "memory_write_failed": "Failed to write memory (you can keep chatting):",
+        "memory_prompt_failed": "Failed to build the memory prompt; continuing without memory:",
+        "import_nothing": "No new files imported (.txt/.docx only; duplicate content is skipped automatically).",
+        "build_done": "Memory build complete",
+        "build_stats": "Chunks: {chunks}\nTerms: {terms}\nUploads: {uploads}",
+        "ollama_error_title": "Ollama Error",
+        "ollama_down_title": "Ollama server not detected",
+        "ollama_down_body": (
+            "EverMate needs a local Ollama server for chat.\n\n"
+            "1. Install: visit https://ollama.com/download or run: brew install ollama\n"
+            "2. Start it: open the Ollama app, or run: ollama serve\n"
+            "3. Pull a model, e.g.: ollama pull deepseek-r1:8b\n\n"
+            "Then come back and send your message again."
+        ),
+        "model_missing_title": "Model not installed",
+        "model_missing_body": "The selected model was not found. Run this first:\n\n  ollama pull {model}\n",
+        "reply_truncated": "(The model's output was cut off before producing an answer. Please retry, or switch models.)",
+        "send_failed_restored": "Send failed; your message was restored to the input box.",
+        "instance_locked_title": "EverMate is already running",
+        "instance_locked_body": "Another EverMate instance is using the same memory directory. Close it before starting a new one.",
+        "uploads_dialog_title": "Imported documents",
+    },
 }
 
-def tr(lang: str, key: str) -> str:
+
+def tr(lang: str, key: str, **kwargs) -> str:
     d = TEXTS.get(lang, TEXTS["zh"])
-    return d.get(key, key)
+    text = d.get(key, key)
+    if kwargs:
+        try:
+            return text.format(**kwargs)
+        except (KeyError, IndexError):
+            return text
+    return text
