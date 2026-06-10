@@ -176,7 +176,11 @@ class MemoryStore:
     # ---------------- schema ----------------
 
     def _open_db(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        # check_same_thread=False: the GUI runs all engine work on a single
+        # background worker (writes are serialized there); the main thread
+        # only does short status reads. System SQLite is built thread-safe
+        # (serialized), which covers that overlap.
+        conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL;")

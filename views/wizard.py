@@ -2,12 +2,14 @@
 # views/wizard.py
 import json
 import os
+import sys
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGraphicsOpacityEffect, QStackedWidget
+    QGraphicsOpacityEffect, QMessageBox, QStackedWidget
 )
+from engine.storage import write_text
 from i18n_qt import tr, APP_TITLE
 from runtime_paths import resource_path, user_app_support_root
 from .chat import ChatPage
@@ -43,9 +45,7 @@ def _load_json(path: str) -> dict:
 
 
 def _save_json(path: str, data: dict) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    write_text(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -66,6 +66,22 @@ class MainWindow(QMainWindow):
         self.page_chat = ChatPage(on_change_lang=self._on_change_lang, on_change_theme=self._on_change_theme)
         self.stack.addWidget(self.page_welcome)
         self.stack.addWidget(self.page_chat)
+
+        if not self.page_chat.mm.acquire_instance_lock():
+            QMessageBox.critical(
+                self,
+                tr(self.page_chat.lang, "instance_locked_title"),
+                tr(self.page_chat.lang, "instance_locked_body"),
+            )
+            sys.exit(1)
+
+        # Persist state shortly after every meaningful change, not only on a
+        # clean close — a crash used to lose the whole session.
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(1500)
+        self._save_timer.timeout.connect(self._save_state)
+        self.page_chat.state_changed.connect(lambda: self._save_timer.start())
 
         root = QWidget()
         root.setObjectName("AppRoot")
@@ -213,15 +229,16 @@ class MainWindow(QMainWindow):
                 return True
         return False
 
-    def closeEvent(self, event):
+    def _save_state(self) -> None:
         try:
             _save_json(self._state_path(), self._collect_state())
         except Exception:
             pass
 
+    def closeEvent(self, event):
+        self._save_state()
         try:
-            self.page_chat.mm.close()
+            self.page_chat.shutdown()
         except Exception:
             pass
-
         super().closeEvent(event)
