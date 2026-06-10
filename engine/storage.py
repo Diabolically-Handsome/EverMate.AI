@@ -527,11 +527,27 @@ class MemoryStore:
         return stored
 
     def mark_ingested(self, stored_path: str) -> None:
+        """Record that an upload's content is in the index. Upserts by hash so
+        uploads that predate the ledger get a row instead of being re-ingested
+        forever."""
+
+        try:
+            digest = file_sha256(stored_path)
+        except OSError:
+            return
         self.conn.execute(
-            "UPDATE imported_files SET ingested=1 WHERE name=?",
-            (os.path.basename(stored_path),),
+            "INSERT INTO imported_files(content_hash, name, imported_at, ingested) VALUES (?,?,?,1) "
+            "ON CONFLICT(content_hash) DO UPDATE SET ingested=1, name=excluded.name",
+            (digest, os.path.basename(stored_path), now_ts()),
         )
         self.conn.commit()
+
+    def is_ingested(self, stored_path: str) -> bool:
+        row = self.conn.execute(
+            "SELECT ingested FROM imported_files WHERE name=?",
+            (os.path.basename(stored_path),),
+        ).fetchone()
+        return bool(row and int(row["ingested"] or 0))
 
     def list_uploads(self) -> List[str]:
         if not os.path.exists(self.uploads_dir):
@@ -555,16 +571,35 @@ class MemoryStore:
         try:
             digest = file_sha256(stored_path)
             self.conn.execute("DELETE FROM imported_files WHERE content_hash=?", (digest,))
-            self.conn.commit()
         except OSError:
-            pass
+            # Can't hash (unreadable file): drop the ledger row by name so a
+            # stale hash never blocks re-importing this content later.
+            self.conn.execute(
+                "DELETE FROM imported_files WHERE name=?", (os.path.basename(stored_path),)
+            )
+        self.conn.commit()
         os.remove(stored_path)
         return True
 
     # ---------------- destructive ops ----------------
 
     def reset_index(self) -> None:
-        """Drop the index (with a .bak of the old DB) ahead of a rebuild."""
+        """Drop the index (with a .bak of the old DB) ahead of a rebuild.
+
+        The imported_files dedup ledger survives the reset — wiping it meant
+        every rebuild silently re-enabled duplicate imports.
+        """
+
+        ledger: List[tuple] = []
+        try:
+            ledger = [
+                tuple(row)
+                for row in self.conn.execute(
+                    "SELECT content_hash, name, imported_at, ingested FROM imported_files"
+                ).fetchall()
+            ]
+        except sqlite3.Error:
+            pass
 
         self.close()
         for fn in os.listdir(self.chunks_dir) if os.path.exists(self.chunks_dir) else []:
@@ -586,6 +621,12 @@ class MemoryStore:
                 except OSError:
                     pass
         self.conn = self._open_db()
+        if ledger:
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO imported_files(content_hash, name, imported_at, ingested) VALUES (?,?,?,?)",
+                ledger,
+            )
+            self.conn.commit()
         self._invalidate_stats()
 
     def clear_chat_history(self) -> None:

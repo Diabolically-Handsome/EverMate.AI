@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import os
 import queue
+import threading
 import time
 import traceback
 
@@ -91,6 +92,10 @@ def _escape_text(text: str) -> str:
     return html.escape(text or "").replace("\n", "<br>")
 
 
+class InstanceLockedError(RuntimeError):
+    """Another EverMate instance owns the memory directory."""
+
+
 class EngineWorker(QThread):
     """Single persistent worker that serializes every engine / LLM job.
 
@@ -106,11 +111,15 @@ class EngineWorker(QThread):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._queue: "queue.Queue" = queue.Queue()
+        # Cooperative cancellation: long-running jobs (the streaming loop)
+        # check this between steps so the app can shut down cleanly.
+        self.cancel = threading.Event()
 
     def submit(self, kind: str, fn) -> None:
         self._queue.put((kind, fn))
 
     def stop(self) -> None:
+        self.cancel.set()
         self._queue.put(None)
 
     def run(self):
@@ -288,8 +297,16 @@ class ChatPage(QWidget):
         self._stream_text = ""
         self._stream_start_pos = -1
         self._ollama_reachable: bool | None = None
+        self._active_jobs: dict[str, str] = {}
+        self._installed_models: list[str] = []
 
         self.mm = MemoryManager()
+        # Single-instance guard must hold BEFORE the worker starts and before
+        # anything heavy touches the shared store.
+        if not self.mm.acquire_instance_lock():
+            self.mm.close()
+            raise InstanceLockedError()
+        self.mm.ui_lang = self.lang
 
         self.worker = EngineWorker(self)
         self.worker.chunk.connect(self._on_stream_chunk)
@@ -301,8 +318,20 @@ class ChatPage(QWidget):
         self._submit_model_scan()
 
     def shutdown(self):
+        """Stop the worker cooperatively, then close the store.
+
+        The streaming loop polls the cancel event, so even a mid-reply quit
+        converges quickly; the generous waits cover rebuilds of large
+        corpora. The connection is only closed once the worker is done —
+        yanking SQLite from under a live thread (or destroying a running
+        QThread) crashes Qt 6.
+        """
+
         self.worker.stop()
-        self.worker.wait(3000)
+        finished = self.worker.wait(15000) or self.worker.wait(45000)
+        if not finished:
+            self.worker.terminate()
+            self.worker.wait(2000)
         self.mm.close()
 
     # ---------------- UI construction ----------------
@@ -602,8 +631,11 @@ class ChatPage(QWidget):
         for name in extras:
             self.model_combo.addItem(f"Installed: {name}", name)
             self.model_combo.setItemData(self.model_combo.count() - 1, name, Qt.ToolTipRole)
-        if current:
-            self._set_combo_by_data(self.model_combo, current)
+        if current and not self._set_combo_by_data(self.model_combo, current):
+            # A restored custom model that the async scan didn't list (yet, or
+            # anymore) must not be silently replaced by the first entry.
+            self.model_combo.addItem(f"Installed: {current}", current)
+            self.model_combo.setCurrentIndex(self.model_combo.count() - 1)
         self.model_combo.blockSignals(False)
         self._on_model_change(self.model_combo.currentIndex())
 
@@ -619,6 +651,7 @@ class ChatPage(QWidget):
 
     def _on_lang_change(self, idx):
         self.lang = self.lang_combo.currentData()
+        self.mm.ui_lang = self.lang
         if callable(self.on_change_lang):
             self.on_change_lang(self.lang)
 
@@ -750,8 +783,8 @@ class ChatPage(QWidget):
         mm = self.mm
         pending = list(self.pending_files)
         lang = self.lang
-        model = None  # persona refresh may use preferred model set below
-        self._set_busy(True, tr(self.lang, "building"))
+        model = self._resolved_model_quiet()
+        self._job_started("build", tr(self.lang, "building"))
 
         def job(_emit):
             if pending:
@@ -773,7 +806,7 @@ class ChatPage(QWidget):
         mm = self.mm
         lang = self.lang
         model = self._resolved_model_quiet()
-        self._set_busy(True, tr(self.lang, "analyzing"))
+        self._job_started("analyze", tr(self.lang, "analyzing"))
 
         def job(_emit):
             mm.analyze_memory(model=model, lang=lang)
@@ -793,7 +826,7 @@ class ChatPage(QWidget):
         self.session_messages = []
         self._chat_messages_html = []
         self._render_all()
-        self._set_busy(True, tr(self.lang, "building"))
+        self._job_started("forget", tr(self.lang, "building"))
         self.worker.submit("forget", lambda _emit: mm.clear_chat_memory())
         self.state_changed.emit()
 
@@ -804,7 +837,7 @@ class ChatPage(QWidget):
 
     def _on_delete_upload(self, path: str):
         mm = self.mm
-        self._set_busy(True, tr(self.lang, "building"))
+        self._job_started("forget", tr(self.lang, "building"))
         self.worker.submit("forget", lambda _emit: mm.delete_upload(path))
 
     def _on_wipe_all(self):
@@ -819,20 +852,25 @@ class ChatPage(QWidget):
         self.session_messages = []
         self._chat_messages_html = []
         self._render_all()
-        self._set_busy(True, tr(self.lang, "building"))
+        self._job_started("forget", tr(self.lang, "building"))
         self.worker.submit("forget", lambda _emit: mm.wipe_all_memory())
         self.state_changed.emit()
 
     # ---------------- chat turn ----------------
 
     def _resolved_model_quiet(self) -> str | None:
-        """Best-effort model name for background jobs; no dialogs, no network."""
+        """Best-effort model name for background jobs; no dialogs, no network.
+
+        Recommended keys resolve against the cached model scan, so Persona
+        refresh honors the selected model even before the first chat turn.
+        """
 
         choice_key = self.model_combo.currentData()
         if not choice_key:
             return None
         if _is_recommended_model_key(str(choice_key)):
-            return None  # worker-side resolution handles it
+            name, _ = resolve_installed_model(self._installed_models, str(choice_key))
+            return name or None
         return str(choice_key)
 
     def _on_send(self):
@@ -850,7 +888,7 @@ class ChatPage(QWidget):
         self.input_edit.clear()
         self._append_message("user", tr(self.lang, "you"), text)
         self._chat_busy = True
-        self._set_busy(True, tr(self.lang, "thinking"))
+        self._job_started("chat", tr(self.lang, "thinking"))
         self._begin_stream_bubble(self._assistant_display_name())
 
         mm = self.mm
@@ -880,17 +918,22 @@ class ChatPage(QWidget):
                 session_messages=session,
             )
             parts: list[str] = []
+            cancel = self.worker.cancel
             for delta in chat_stream(list(plan.get("messages", [])), model=model):
+                if cancel.is_set():
+                    break
                 parts.append(delta)
                 emit_chunk(delta)
             reply = "".join(parts).strip()
 
             fallback_used = False
-            if not reply and str(plan.get("mode")) == "recall":
+            if not reply and not cancel.is_set() and str(plan.get("mode")) == "recall":
                 # The model produced nothing (e.g. truncated reasoning);
                 # fall back to an honest extractive answer from evidence.
-                reply = mm.render_fact_answer(text, retrieved_bundle=dict(plan.get("bundle", {})))
-                fallback_used = reply != "无法确定"
+                reply = mm.render_fact_answer(
+                    text, retrieved_bundle=dict(plan.get("bundle", {})), lang=lang
+                )
+                fallback_used = reply not in ("无法确定", "Unable to determine from memory.")
                 if not fallback_used:
                     reply = ""
 
@@ -923,7 +966,7 @@ class ChatPage(QWidget):
             mm.mark_refreshed()
             return {}
 
-        self._set_busy(True, tr(self.lang, "refreshing_memory"))
+        self._job_started("auto_analyze", tr(self.lang, "refreshing_memory"))
         self.worker.submit("auto_analyze", job)
 
     # ---------------- worker callbacks ----------------
@@ -937,7 +980,8 @@ class ChatPage(QWidget):
     def _on_job_done(self, kind: str, result: object):
         if kind == "model_scan":
             self._ollama_reachable = True
-            self._populate_model_combo(list(result or []))
+            self._installed_models = list(result or [])
+            self._populate_model_combo(self._installed_models)
             return
 
         if kind == "chat":
@@ -945,7 +989,7 @@ class ChatPage(QWidget):
             reply = str(data.get("reply", ""))
             self._finish_stream_bubble(reply or tr(self.lang, "reply_truncated"))
             self._chat_busy = False
-            self._set_busy(False)
+            self._job_finished("chat")
 
             if reply:
                 self.session_messages.append({"role": "user", "content": self._inflight_text})
@@ -971,7 +1015,7 @@ class ChatPage(QWidget):
 
         if kind == "build":
             data = dict(result or {})
-            self._set_busy(False)
+            self._job_finished("build")
             if data.get("kind") == "nothing_imported":
                 QMessageBox.warning(
                     self, tr(self.lang, "build_done"), tr(self.lang, "import_nothing")
@@ -997,7 +1041,7 @@ class ChatPage(QWidget):
             return
 
         if kind in ("analyze", "forget"):
-            self._set_busy(False)
+            self._job_finished(kind)
             if kind == "analyze":
                 QMessageBox.information(
                     self, tr(self.lang, "analysis_complete"), tr(self.lang, "done")
@@ -1008,7 +1052,7 @@ class ChatPage(QWidget):
             return
 
         if kind == "auto_analyze":
-            self._set_busy(False)
+            self._job_finished("auto_analyze")
             self._refresh_memory_status()
             return
 
@@ -1021,12 +1065,14 @@ class ChatPage(QWidget):
             # Roll back the optimistic UI: remove the streaming bubble and the
             # user's bubble, and put the text back into the composer.
             self._chat_busy = False
+            self._stream_started = False
+            self._stream_text = ""
             if self._chat_messages_html:
                 self._chat_messages_html.pop()  # user bubble
             self._render_all()
             self.input_edit.setPlainText(self._inflight_text)
             self._inflight_text = ""
-        self._set_busy(False)
+        self._job_finished(kind)
 
         if error_kind == "connection":
             QMessageBox.warning(
@@ -1094,9 +1140,11 @@ class ChatPage(QWidget):
     def _finish_stream_bubble(self, final_text: str):
         if not self._stream_started:
             return
-        self._stream_started = False
+        # Render the final text while the stream is still "started" —
+        # _update_stream_bubble guards on that flag.
         self._stream_text = final_text
         self._update_stream_bubble()
+        self._stream_started = False
         self._stream_text = ""
         self._chat_messages_html.append(
             self._message_fragment("assistant", self._assistant_display_name(), final_text)
@@ -1110,15 +1158,27 @@ class ChatPage(QWidget):
         """Full re-render (theme/lang switches, restore, rollback)."""
 
         self.chat_view.document().setDefaultStyleSheet(self._chat_css())
-        if self._chat_messages_html:
+        if self._chat_messages_html or self._stream_started:
             self.chat_view.setHtml("".join(self._chat_messages_html))
-            self._scroll_to_bottom()
         else:
             title = tr(self.lang, "empty_title")
             body = tr(self.lang, "empty_body")
             self.chat_view.setHtml(
                 f'<div class="empty-state"><h2>{_escape_text(title)}</h2><p>{_escape_text(body)}</p></div>'
             )
+        if self._stream_started:
+            # A reply is streaming: re-anchor the live bubble at the new end
+            # of the document, otherwise the stale position corrupts the
+            # transcript on the next chunk.
+            cursor = self.chat_view.textCursor()
+            cursor.movePosition(QTextCursor.End)
+            self._stream_start_pos = cursor.position()
+            cursor.insertHtml(
+                self._message_fragment(
+                    "assistant", self._assistant_display_name(), self._stream_text or "…"
+                )
+            )
+        self._scroll_to_bottom()
 
     def _chat_css(self) -> str:
         if self.theme == "dark":
@@ -1191,16 +1251,32 @@ class ChatPage(QWidget):
 
     # ---------------- busy / animation ----------------
 
-    def _set_busy(self, busy: bool, label: str = ""):
+    def _job_started(self, kind: str, label: str):
+        self._active_jobs[kind] = label
+        self._sync_busy_ui()
+
+    def _job_finished(self, kind: str):
+        self._active_jobs.pop(kind, None)
+        self._sync_busy_ui()
+
+    def _sync_busy_ui(self):
+        """One source of truth for busy state — a finishing background job
+        must not re-enable destructive actions while a chat is streaming."""
+
+        busy = bool(self._active_jobs)
         # The composer stays enabled during background memory jobs; it is
         # only locked while a chat turn is in flight.
         self.send_btn.setEnabled(not self._chat_busy)
-        self.build_btn.setEnabled(not busy)
-        self.analyze_btn.setEnabled(not busy)
-        self.forget_chat_btn.setEnabled(not busy)
-        self.manage_uploads_btn.setEnabled(not busy)
-        self.wipe_all_btn.setEnabled(not busy)
-        self.status_pill.setText(label if busy else tr(self.lang, "ready"))
+        for btn in (
+            self.build_btn,
+            self.analyze_btn,
+            self.forget_chat_btn,
+            self.manage_uploads_btn,
+            self.wipe_all_btn,
+        ):
+            btn.setEnabled(not busy)
+        label = next(reversed(self._active_jobs.values())) if busy else tr(self.lang, "ready")
+        self.status_pill.setText(label)
         self.status_pill.setProperty("busy", busy)
         self.status_pill.style().unpolish(self.status_pill)
         self.status_pill.style().polish(self.status_pill)
@@ -1273,6 +1349,12 @@ class ChatPage(QWidget):
         if isinstance(raw_fragments, list) and raw_fragments:
             self._chat_messages_html = [str(x) for x in raw_fragments if isinstance(x, str)]
         self._render_all()
+        if not self._chat_messages_html:
+            # Pre-rework app_state.json stored the transcript only as a full
+            # HTML document; show it read-only rather than dropping it.
+            legacy_html = state.get("chat_html", "")
+            if isinstance(legacy_html, str) and legacy_html.strip():
+                self.chat_view.setHtml(legacy_html)
 
         input_text = state.get("input_text", "")
         if isinstance(input_text, str):

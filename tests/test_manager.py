@@ -145,18 +145,22 @@ class TestPromptBuilding:
         prompt = manager.build_system_prompt(
             "还记得我最喜欢的菜是什么吗", assistant_style="温柔体贴", lang="zh"
         )
-        open_i = prompt.index("--- 记忆开始")
-        close_i = prompt.index("--- 记忆结束")
+        open_i = prompt.index("--- 记忆证据开始")
+        close_i = prompt.index("--- 记忆证据结束")
         assert open_i < prompt.index("麻婆豆腐") < close_i
         assert "温柔体贴" in prompt
+        # Core/Persona are the engine's own instructions and live OUTSIDE
+        # the do-not-follow-instructions fence.
+        assert prompt.index("【Core】") < open_i
+        assert prompt.index("【Persona】") < open_i
 
     def test_en_prompt_fences_evidence(self, manager):
         manager.store.ingest_text("My favorite movie is Blade Runner.", source="note")
         prompt = manager.build_system_prompt(
             "do you remember my favorite movie", assistant_style="warm", lang="en"
         )
-        open_i = prompt.index("--- BEGIN MEMORY")
-        close_i = prompt.index("--- END MEMORY")
+        open_i = prompt.index("--- BEGIN MEMORY EVIDENCE")
+        close_i = prompt.index("--- END MEMORY EVIDENCE")
         assert open_i < prompt.index("Blade Runner") < close_i
 
     def test_prompt_contains_no_benchmark_corpus_strings(self, manager):
