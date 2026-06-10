@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
 
         self.apply_theme(self.theme)
+        self.resize(1180, 760)
         self._restore_state()
         QTimer.singleShot(0, lambda: self._fade_in_widget(self.stack.currentWidget(), duration=300))
 
@@ -194,11 +195,23 @@ class MainWindow(QMainWindow):
 
             x = window.get("x", None)
             y = window.get("y", None)
-            if isinstance(x, int) and isinstance(y, int):
+            if isinstance(x, int) and isinstance(y, int) and self._position_on_screen(x, y):
                 self.move(x, y)
 
             if bool(window.get("is_maximized", False)):
                 self.showMaximized()
+
+    @staticmethod
+    def _position_on_screen(x: int, y: int) -> bool:
+        """Reject saved positions on monitors that are no longer attached."""
+
+        from PySide6.QtGui import QGuiApplication
+
+        for screen in QGuiApplication.screens():
+            geo = screen.availableGeometry()
+            if geo.contains(x + 40, y + 40):
+                return True
+        return False
 
     def closeEvent(self, event):
         try:
