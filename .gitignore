@@ -13,7 +13,6 @@ dist/
 # IDE / OS
 .idea/
 .DS_Store
-.claude/*.lock
 
 # User data — live memory (chat logs, index) must never be committed
 memory/
