@@ -135,12 +135,12 @@ QPushButton {
 }
 
 QPushButton#PrimaryButton {
-    background: #1f6f62;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #2a8a76, stop:1 #1c6157);
     color: #ffffff;
 }
 
 QPushButton#PrimaryButton:hover {
-    background: #257b6d;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #339a84, stop:1 #226b60);
 }
 
 QPushButton#PrimaryButton:pressed {

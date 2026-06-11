@@ -10,7 +10,7 @@ import time
 import traceback
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QTextCursor
+from PySide6.QtGui import QColor, QTextCursor
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -33,6 +33,14 @@ from PySide6.QtWidgets import (
 
 from i18n_qt import tr
 from memory_manager import MemoryManager
+from views.effects import (
+    PulseController,
+    SmoothScroller,
+    count_up,
+    flash_style,
+    glow_pulse,
+    slide_fade_in,
+)
 from models_config import TARGET_MODELS, is_local_model, resolve_installed_model
 from ollama_client import (
     OllamaConnectionError,
@@ -299,6 +307,11 @@ class ChatPage(QWidget):
         self._ollama_reachable: bool | None = None
         self._active_jobs: dict[str, str] = {}
         self._installed_models: list[str] = []
+        self._stat_snapshot: dict[str, int] = {}
+        self._typing_phase = 0
+        self._typing_timer = QTimer(self)
+        self._typing_timer.setInterval(350)
+        self._typing_timer.timeout.connect(self._on_typing_tick)
 
         self.mm = MemoryManager()
         # Single-instance guard must hold BEFORE the worker starts and before
@@ -373,6 +386,10 @@ class ChatPage(QWidget):
         self.model_combo = QComboBox()
         self.model_combo.setObjectName("ControlCombo")
         self.model_combo.setAccessibleName("Model")
+        # Long installed-model names (hf.co/...) must not dictate the
+        # sidebar's minimum width; the popup still shows the full name.
+        self.model_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        self.model_combo.setMinimumContentsLength(12)
         self._populate_model_combo([])
         self.model_combo.currentIndexChanged.connect(self._on_model_change)
         sidebar_layout.addWidget(self.model_label)
@@ -480,6 +497,10 @@ class ChatPage(QWidget):
         actions.addWidget(self.build_btn)
         actions.addWidget(self.analyze_btn)
         sidebar_layout.addLayout(actions)
+        # Paired buttons may shrink below their text hint rather than force
+        # the whole sidebar content wider than its viewport (which clips).
+        for btn in (self.build_btn, self.analyze_btn):
+            btn.setMinimumWidth(1)
 
         detail_row = QHBoxLayout()
         detail_row.setSpacing(8)
@@ -510,6 +531,8 @@ class ChatPage(QWidget):
         forget_row1.addWidget(self.forget_chat_btn)
         forget_row1.addWidget(self.manage_uploads_btn)
         sidebar_layout.addLayout(forget_row1)
+        for btn in (self.forget_chat_btn, self.manage_uploads_btn):
+            btn.setMinimumWidth(1)
         self.wipe_all_btn = QPushButton("")
         self.wipe_all_btn.setObjectName("TertiaryButton")
         self.wipe_all_btn.setAccessibleName("Wipe all memory")
@@ -565,6 +588,8 @@ class ChatPage(QWidget):
         self.chat_view.setOpenExternalLinks(False)
         self.chat_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.chat_view, 1)
+        self._scroller = SmoothScroller(self.chat_view.verticalScrollBar())
+        self._pill_pulse = PulseController(self.status_pill)
 
         composer = QFrame()
         composer.setObjectName("Composer")
@@ -730,6 +755,9 @@ class ChatPage(QWidget):
             self.mem_view.setPlainText(f"Memory error: {e}")
         self._refresh_memory_status()
 
+    def _accent_color(self) -> QColor:
+        return QColor("#56a894" if self.theme == "dark" else "#1f6f62")
+
     def _refresh_memory_status(self):
         try:
             status = self.mm.status_snapshot()
@@ -741,9 +769,24 @@ class ChatPage(QWidget):
             )
             memory_dir = str(status.get("memory_dir", "") or "")
 
-            self.chunk_value.setText(str(status.get("chunks", 0)))
-            self.term_value.setText(str(status.get("terms", 0)))
-            self.upload_value.setText(str(status.get("uploads", 0)))
+            # Count the numbers up instead of snapping, and let the memory
+            # card glow once when new chunks landed — "it remembered that".
+            grew = False
+            for key, label in (
+                ("chunks", self.chunk_value),
+                ("terms", self.term_value),
+                ("uploads", self.upload_value),
+            ):
+                new_val = int(status.get(key, 0) or 0)
+                old_val = self._stat_snapshot.get(key, new_val)
+                if new_val != old_val:
+                    count_up(label.setText, old_val, new_val, parent=self, keep=self._animations)
+                    grew = grew or new_val > old_val
+                else:
+                    label.setText(str(new_val))
+                self._stat_snapshot[key] = new_val
+            if grew:
+                glow_pulse(self.memory_card, self._accent_color(), keep=self._animations)
             self.last_value.setText(last_text)
             self.mem_status_label.setText(tr(self.lang, "memory_root_ready"))
             self.mem_status_label.setToolTip(memory_dir)
@@ -757,10 +800,27 @@ class ChatPage(QWidget):
     # ---------------- pending files ----------------
 
     def _on_files_dropped(self, paths: list[str]):
+        added = 0
         for p in paths:
             if p not in self.pending_files:
                 self.pending_files.append(p)
+                added += 1
         self._refresh_pending_label()
+        if added:
+            accent = self._accent_color()
+            soft = QColor(accent)
+            soft.setAlpha(70)
+            clear = QColor(accent)
+            clear.setAlpha(0)
+            flash_style(
+                self.drop_area,
+                "background: {color}; border: 2px dashed "
+                + accent.name()
+                + "; border-radius: 14px; padding: 12px;",
+                clear,
+                soft,
+                keep=self._animations,
+            )
 
     def _clear_pending_files(self):
         self.pending_files = []
@@ -889,6 +949,7 @@ class ChatPage(QWidget):
         self._append_message("user", tr(self.lang, "you"), text)
         self._chat_busy = True
         self._job_started("chat", tr(self.lang, "thinking"))
+        glow_pulse(self.send_btn, self._accent_color(), max_blur=18, duration=380, keep=self._animations)
         self._begin_stream_bubble(self._assistant_display_name())
 
         mm = self.mm
@@ -1064,6 +1125,7 @@ class ChatPage(QWidget):
         if kind == "chat":
             # Roll back the optimistic UI: remove the streaming bubble and the
             # user's bubble, and put the text back into the composer.
+            self._typing_timer.stop()
             self._chat_busy = False
             self._stream_started = False
             self._stream_text = ""
@@ -1113,16 +1175,30 @@ class ChatPage(QWidget):
             cursor.insertHtml(fragment)
             self._scroll_to_bottom()
 
+    _TYPING_GLYPHS = ("●  ○  ○", "○  ●  ○", "○  ○  ●")
+
+    def _typing_glyph(self) -> str:
+        return self._TYPING_GLYPHS[self._typing_phase % len(self._TYPING_GLYPHS)]
+
+    def _on_typing_tick(self):
+        if not self._stream_started or self._stream_text:
+            self._typing_timer.stop()
+            return
+        self._typing_phase += 1
+        self._update_stream_bubble()
+
     def _begin_stream_bubble(self, name: str):
         self._stream_started = True
         self._stream_text = ""
+        self._typing_phase = 0
+        self._typing_timer.start()
         if not self._chat_messages_html:
             # ensure the empty-state is cleared before we take a position
             self._render_all()
         cursor = self.chat_view.textCursor()
         cursor.movePosition(QTextCursor.End)
         self._stream_start_pos = cursor.position()
-        cursor.insertHtml(self._message_fragment("assistant", name, "…"))
+        cursor.insertHtml(self._message_fragment("assistant", name, self._typing_glyph()))
         self._scroll_to_bottom()
 
     def _update_stream_bubble(self):
@@ -1133,11 +1209,16 @@ class ChatPage(QWidget):
         cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
         cursor.removeSelectedText()
         cursor.insertHtml(
-            self._message_fragment("assistant", self._assistant_display_name(), self._stream_text or "…")
+            self._message_fragment(
+                "assistant",
+                self._assistant_display_name(),
+                self._stream_text or self._typing_glyph(),
+            )
         )
         self._scroll_to_bottom()
 
     def _finish_stream_bubble(self, final_text: str):
+        self._typing_timer.stop()
         if not self._stream_started:
             return
         # Render the final text while the stream is still "started" —
@@ -1151,8 +1232,7 @@ class ChatPage(QWidget):
         )
 
     def _scroll_to_bottom(self):
-        bar = self.chat_view.verticalScrollBar()
-        bar.setValue(bar.maximum())
+        self._scroller.to_bottom()
 
     def _render_all(self):
         """Full re-render (theme/lang switches, restore, rollback)."""
@@ -1280,11 +1360,23 @@ class ChatPage(QWidget):
         self.status_pill.setProperty("busy", busy)
         self.status_pill.style().unpolish(self.status_pill)
         self.status_pill.style().polish(self.status_pill)
-        self._fade_in_widget(self.status_pill, duration=140, start=0.45)
+        # Breathing pulse while anything is in flight.
+        if busy:
+            self._pill_pulse.start()
+        else:
+            self._pill_pulse.stop()
 
     def play_intro_animation(self):
         self._fade_in_widget(self.sidebar, duration=260, start=0.0)
         self._fade_in_widget(self.main_panel, duration=340, start=0.0)
+        # Staggered rise of the sidebar cards after the layout settles.
+        cards = (self.memory_card, self.drop_area, self.mem_status_label)
+
+        def stagger():
+            for i, widget in enumerate(cards):
+                slide_fade_in(widget, dy=14, duration=360, delay=120 + 80 * i, keep=self._animations)
+
+        QTimer.singleShot(280, stagger)
 
     def _fade_in_widget(self, widget: QWidget, duration: int = 220, start: float = 0.0):
         effect = QGraphicsOpacityEffect(widget)
