@@ -37,7 +37,7 @@ except Exception:  # pragma: no cover - optional dependency
 DEFAULT_CONTEXT_LENGTHS = (8000, 32000, 128000, 512000, 1000000)
 DEFAULT_DEPTHS = (10, 30, 50, 70, 90)
 DEFAULT_MODEL = "gpt-oss:20b"
-DEFAULT_OUTPUT_DIR = "/Users/lawrencegrey/Desktop/EverMate/reports"
+DEFAULT_OUTPUT_DIR = "reports"
 DEFAULT_MEMORY_PREFIX = "/tmp/evermate-niah"
 
 

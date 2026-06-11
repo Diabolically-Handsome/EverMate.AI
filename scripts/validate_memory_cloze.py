@@ -22,10 +22,10 @@ from memory_manager import MemoryConfig, MemoryManager
 from ollama_client import chat as ollama_chat
 
 
-DEFAULT_DOCX = "/Users/lawrencegrey/Desktop/Prompt 5 Feb.25-Mar.7.docx"
+DEFAULT_DOCX = ""  # pass --docx explicitly
 DEFAULT_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q8_0"
 DEFAULT_MEMORY_DIR = "/tmp/evermate-memory-cloze-validation"
-DEFAULT_OUTPUT_DIR = "/Users/lawrencegrey/Desktop/EverMate/reports"
+DEFAULT_OUTPUT_DIR = "reports"
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ class EvalRow:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate EverMate memory recall with cloze questions.")
-    parser.add_argument("--docx", default=DEFAULT_DOCX, help="Path to the source .docx file.")
+    parser.add_argument("--docx", default=DEFAULT_DOCX, required=not DEFAULT_DOCX, help="Path to the source .docx file.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Exact Ollama model name to use.")
     parser.add_argument("--memory-dir", default=DEFAULT_MEMORY_DIR, help="Isolated memory directory.")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Directory for reports and question bank.")

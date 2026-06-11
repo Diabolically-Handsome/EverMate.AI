@@ -23,7 +23,7 @@ from memory_manager import MemoryConfig, MemoryManager
 from ollama_client import chat as ollama_chat
 
 
-DEFAULT_DOCX = "/Users/lawrencegrey/Desktop/Prompt 7 Mar.14-Apr.30.docx"
+DEFAULT_DOCX = ""  # pass --docx explicitly
 DEFAULT_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q8_0"
 DEFAULT_QGEN_MODEL = "gpt-oss:20b"
 DEFAULT_JUDGE_MODEL = "gpt-oss:20b"
@@ -59,7 +59,7 @@ class EvalRow:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate EverMate memory recall with auto-generated questions.")
-    parser.add_argument("--docx", default=DEFAULT_DOCX, help="Path to the source .docx file.")
+    parser.add_argument("--docx", default=DEFAULT_DOCX, required=not DEFAULT_DOCX, help="Path to the source .docx file.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Exact Ollama model name to answer with.")
     parser.add_argument("--question-model", default=DEFAULT_QGEN_MODEL, help="Model used to generate grounded questions.")
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL, help="Model used to judge answers.")

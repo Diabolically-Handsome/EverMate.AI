@@ -1,6 +1,6 @@
 # Public-corpus benchmark — hongloumeng (zh)
 
-- Corpus: /Users/lawrencegrey/Desktop/EverMate-local-data/corpora/hongloumeng.txt (906,088 chars)
+- Corpus: corpora/hongloumeng.txt (906,088 chars)
 - Index: 326 chunks / 131,478 terms / 3.0s
 - Answer model: gpt-oss:20b (temperature 0)
 - Question generation: deterministic seeded cloze (seed=7), no LLM, no hand-written bank
@@ -15,6 +15,6 @@
 
 ## Reproduce
 ```bash
-python scripts/benchmark_public_corpus.py --txt /Users/lawrencegrey/Desktop/EverMate-local-data/corpora/hongloumeng.txt --lang zh \
+python scripts/benchmark_public_corpus.py --txt corpora/hongloumeng.txt --lang zh \
     --model gpt-oss:20b --questions 60 --retrieval-probes 200 --seed 7
 ```

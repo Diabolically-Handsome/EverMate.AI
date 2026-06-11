@@ -1,6 +1,6 @@
 # Public-corpus benchmark — moby_dick (en)
 
-- Corpus: /Users/lawrencegrey/Desktop/EverMate-local-data/corpora/moby_dick.txt (1,218,938 chars)
+- Corpus: corpora/moby_dick.txt (1,218,938 chars)
 - Index: 441 chunks / 17,115 terms / 0.4s
 - Answer model: gpt-oss:20b (temperature 0)
 - Question generation: deterministic seeded cloze (seed=7), no LLM, no hand-written bank
@@ -15,6 +15,6 @@
 
 ## Reproduce
 ```bash
-python scripts/benchmark_public_corpus.py --txt /Users/lawrencegrey/Desktop/EverMate-local-data/corpora/moby_dick.txt --lang en \
+python scripts/benchmark_public_corpus.py --txt corpora/moby_dick.txt --lang en \
     --model gpt-oss:20b --questions 60 --retrieval-probes 200 --seed 7
 ```

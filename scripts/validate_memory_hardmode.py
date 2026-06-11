@@ -32,12 +32,12 @@ from memory_manager import MemoryConfig, MemoryManager
 from ollama_client import chat as ollama_chat
 
 
-DEFAULT_DOCX = "/Users/lawrencegrey/Desktop/Prompt 4 Feb.6-Feb.25.docx"
+DEFAULT_DOCX = ""  # pass --docx explicitly
 DEFAULT_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q8_0"
 DEFAULT_QUESTION_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q4_K_M"
 DEFAULT_JUDGE_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q4_K_M"
 DEFAULT_MEMORY_DIR = "/tmp/evermate-memory-hardmode-validation"
-DEFAULT_OUTPUT_DIR = "/Users/lawrencegrey/Desktop/EverMate/reports"
+DEFAULT_OUTPUT_DIR = "reports"
 
 
 @dataclass(frozen=True)
@@ -71,7 +71,7 @@ class EvalRow:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate EverMate memory recall with mixed hard-mode questions.")
-    parser.add_argument("--docx", default=DEFAULT_DOCX, help="Path to the source .docx file.")
+    parser.add_argument("--docx", default=DEFAULT_DOCX, required=not DEFAULT_DOCX, help="Path to the source .docx file.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Exact Ollama model name to answer with.")
     parser.add_argument("--question-model", default=DEFAULT_QUESTION_MODEL, help="Model used to generate reasoning questions.")
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL, help="Model used to judge answers.")

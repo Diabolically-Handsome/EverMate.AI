@@ -29,7 +29,7 @@ from memory_manager import MemoryConfig, MemoryManager
 from ollama_client import chat as ollama_chat
 
 
-DEFAULT_DOCX = "/Users/lawrencegrey/Desktop/Prompt 4 Feb.6-Feb.25.docx"
+DEFAULT_DOCX = ""  # pass --docx explicitly
 DEFAULT_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q8_0"
 DEFAULT_QUESTION_MODEL = "hf.co/TrevorJS/gemma-4-26B-A4B-it-uncensored-GGUF:Q4_K_M"
 DEFAULT_JUDGE_PROVIDER = os.getenv("JUDGE_PROVIDER", "openai").strip().lower() or "openai"
@@ -37,7 +37,7 @@ DEFAULT_JUDGE_MODEL = os.getenv("OPENAI_JUDGE_MODEL", "gpt-4o")
 DEFAULT_OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
 DEFAULT_GOOGLE_BASE_URL = os.getenv("GOOGLE_BASE_URL", "https://generativelanguage.googleapis.com/v1beta")
 DEFAULT_MEMORY_DIR = "/tmp/evermate-memory-companion-validation"
-DEFAULT_OUTPUT_DIR = "/Users/lawrencegrey/Desktop/EverMate/reports"
+DEFAULT_OUTPUT_DIR = "reports"
 JUDGE_PROFILE = "warm_assistant_v2"
 JUDGE_FOCUS = [
     "naturalness",
@@ -229,7 +229,7 @@ class CompanionResult:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Validate EverMate companion quality.")
-    parser.add_argument("--docx", default=DEFAULT_DOCX, help="Path to the source .docx file.")
+    parser.add_argument("--docx", default=DEFAULT_DOCX, required=not DEFAULT_DOCX, help="Path to the source .docx file.")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Exact Ollama model name to answer with.")
     parser.add_argument("--question-model", default=DEFAULT_QUESTION_MODEL, help="Local model used to generate benchmark cases.")
     parser.add_argument("--judge-provider", choices=("openai", "google"), default=DEFAULT_JUDGE_PROVIDER, help="Provider used for final judging.")

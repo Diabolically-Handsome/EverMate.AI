@@ -48,16 +48,16 @@ from scripts.validate_memory_accuracy import (
 )
 
 
-DEFAULT_DOCX = "/Users/lawrencegrey/Desktop/EverMate/全职高手.docx"
-DEFAULT_QUESTION_BANK = "/Users/lawrencegrey/Desktop/EverMate/reports/全职高手-accuracy-question-bank.json"
+DEFAULT_DOCX = ""  # pass --docx explicitly
+DEFAULT_QUESTION_BANK = "reports/全职高手-accuracy-question-bank.json"
 DEFAULT_MODEL = "gpt-oss:20b"
 DEFAULT_MEMORY_DIR = "/tmp/evermate-memory-accuracy-gpt-oss-20b"
-DEFAULT_OUTPUT_DIR = "/Users/lawrencegrey/Desktop/EverMate/reports"
+DEFAULT_OUTPUT_DIR = "reports"
 DEFAULT_RESULTS = "全职高手-gpt-oss-20b-manual-results.json"
 DEFAULT_REPORT = "全职高手-gpt-oss-20b-manual-report.md"
 DEFAULT_JUDGMENTS = "全职高手-gpt-oss-20b-manual-judgments.json"
-OLD_RESULTS = "/Users/lawrencegrey/Desktop/EverMate/reports/全职高手-accuracy-results.json"
-PREVIOUS_20B_RESULTS = "/Users/lawrencegrey/Desktop/EverMate/reports/全职高手-gpt-oss-20b-manual-fix-results.json"
+OLD_RESULTS = "reports/全职高手-accuracy-results.json"
+PREVIOUS_20B_RESULTS = "reports/全职高手-gpt-oss-20b-manual-fix-results.json"
 ROOT_CAUSES = (
     "retrieval_miss",
     "alias_mismatch",
@@ -125,7 +125,7 @@ class PendingRow:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Offline manual accuracy benchmark for gpt-oss:20b.")
-    parser.add_argument("--docx", default=DEFAULT_DOCX)
+    parser.add_argument("--docx", default=DEFAULT_DOCX, required=not DEFAULT_DOCX)
     parser.add_argument("--question-bank", default=DEFAULT_QUESTION_BANK)
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--memory-dir", default=DEFAULT_MEMORY_DIR)
