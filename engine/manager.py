@@ -83,6 +83,8 @@ class MemoryManager:
 
         self.core_md_path = os.path.join(self.memory_dir, "01_core.md")
         self.persona_md_path = os.path.join(self.memory_dir, "02_persona.md")
+        # Learned speaking style of the companion (only exists once learned).
+        self.voice_md_path = os.path.join(self.memory_dir, "04_voice.md")
 
         self.store = MemoryStore(self.memory_dir, chunk_chars=self.cfg.chunk_chars)
         self.retriever = Retriever(self.store)
@@ -167,7 +169,14 @@ class MemoryManager:
     def import_files(self, file_paths: List[str]) -> List[str]:
         return self.store.import_files(file_paths)
 
-    def ingest_new_uploads(self, stored_paths: Optional[List[str]] = None) -> int:
+    @staticmethod
+    def _progress(progress_cb, **payload) -> None:
+        if progress_cb is not None:
+            progress_cb(payload)
+
+    def ingest_new_uploads(
+        self, stored_paths: Optional[List[str]] = None, progress_cb=None
+    ) -> int:
         """Index newly imported uploads without a destructive full rebuild."""
 
         if stored_paths is not None:
@@ -178,22 +187,33 @@ class MemoryManager:
             ]
         made = 0
         for path in targets:
+            name = os.path.basename(path)
             made += self.store.ingest_file(
-                path, source=f"upload:{os.path.basename(path)}"
+                path,
+                source=f"upload:{name}",
+                progress_cb=lambda n, _name=name: self._progress(
+                    progress_cb, stage="ingest", name=_name, chunks=n
+                ),
             )
             self.store.mark_ingested(path)
         return made
 
-    def rebuild_memory(self) -> Dict[str, int]:
+    def rebuild_memory(self, progress_cb=None) -> Dict[str, int]:
         """Full rebuild from uploads/ + chat_log.txt (explicit, with DB backup)."""
 
+        self._progress(progress_cb, stage="reset")
         self.store.reset_index()
 
         chunks_added = 0
         uploads = self.store.list_uploads()
         for up in uploads:
+            name = os.path.basename(up)
             chunks_added += self.store.ingest_file(
-                up, source=f"upload:{os.path.basename(up)}"
+                up,
+                source=f"upload:{name}",
+                progress_cb=lambda n, _name=name: self._progress(
+                    progress_cb, stage="ingest", name=_name, chunks=n
+                ),
             )
             self.store.mark_ingested(up)
 
@@ -205,11 +225,17 @@ class MemoryManager:
                     "",
                     chat_text,
                 )
-                chunks_added += self.store.ingest_text(chat_text, source="chat")
+                chunks_added += self.store.ingest_text(
+                    chat_text,
+                    source="chat",
+                    progress_cb=lambda n: self._progress(
+                        progress_cb, stage="ingest", name="chat", chunks=n
+                    ),
+                )
 
         write_text(self.store.buffer_path, "")
         self.store.meta_set_int("new_chunks_since_refresh", 0)
-        self.analyze_memory(lang=self.ui_lang)
+        self.analyze_memory(lang=self.ui_lang, progress_cb=progress_cb)
 
         return {
             "chunks": self.store.count_chunks(),
@@ -218,16 +244,27 @@ class MemoryManager:
             "chunks_added": chunks_added,
         }
 
-    def analyze_memory(self, model: Optional[str] = None, lang: str = "zh") -> None:
-        """Refresh 01_core.md and 02_persona.md."""
+    def analyze_memory(
+        self, model: Optional[str] = None, lang: str = "zh", progress_cb=None
+    ) -> None:
+        """Refresh 01_core.md, 02_persona.md, and the learned voice profile."""
 
+        self._progress(progress_cb, stage="core")
         persona_mod.refresh_core(
             self.store, self.core_md_path, self.cfg.core_top_terms, lang=lang
         )
+        self._progress(progress_cb, stage="persona")
         persona_mod.refresh_persona(
             self.store,
             self.persona_md_path,
             self.cfg.persona_max_bullets,
+            lang=lang,
+            model=model or self.preferred_model,
+        )
+        self._progress(progress_cb, stage="voice")
+        persona_mod.refresh_voice(
+            self.store,
+            self.voice_md_path,
             lang=lang,
             model=model or self.preferred_model,
         )
@@ -239,7 +276,7 @@ class MemoryManager:
     # ---------------- forgetting ----------------
 
     def _reset_core_persona_files(self) -> None:
-        for path in (self.core_md_path, self.persona_md_path):
+        for path in (self.core_md_path, self.persona_md_path, self.voice_md_path):
             if os.path.exists(path):
                 os.remove(path)
         self._ensure_files_exist()
@@ -265,13 +302,10 @@ class MemoryManager:
         return self.rebuild_memory()
 
     def wipe_all_memory(self) -> None:
-        """Forget everything, including Core/Persona."""
+        """Forget everything, including Core/Persona and the learned voice."""
 
         self.store.wipe_all()
-        for path in (self.core_md_path, self.persona_md_path):
-            if os.path.exists(path):
-                os.remove(path)
-        self._ensure_files_exist()
+        self._reset_core_persona_files()
 
     # ---------------- incremental chat ----------------
 
@@ -439,13 +473,32 @@ class MemoryManager:
                     "当前检索中存在可能相互冲突的维度：" + "、".join(markers) + "。不确定时请保守表述。"
                 )
 
-        # Core/Persona are the engine's own instructions and stay OUTSIDE the
-        # fence; only retrieved user-content evidence goes inside it.
+        # The learned companion voice: continue the old friend's way of
+        # speaking instead of a generic assistant tone.
+        voice_bullets = persona_mod.read_voice_bullets(self.voice_md_path)
+        voice_section = ""
+        if voice_bullets:
+            if lang == "en":
+                voice_section = (
+                    "【Companion Voice】\nThis is your established speaking style "
+                    "from past conversations — continue it naturally:\n"
+                    + "\n".join(f"- {b}" for b in voice_bullets)
+                )
+            else:
+                voice_section = (
+                    "【伙伴语气】\n以下是您在过往对话中一贯的说话风格，请自然地延续它：\n"
+                    + "\n".join(f"- {b}" for b in voice_bullets)
+                )
+
+        # Core/Persona/Voice are the engine's own instructions and stay
+        # OUTSIDE the fence; only retrieved user-content evidence goes
+        # inside it.
         sections = [
             base,
             "【Assistant Style】\n" + (assistant_style.strip() if assistant_style else ""),
             "【Core】\n" + (core if core else "(empty)"),
             "【Persona】\n" + (persona if persona else "(empty)"),
+            voice_section,
             fence_open,
             self._format_evidence(items, lang),
             fence_close,

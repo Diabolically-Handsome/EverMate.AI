@@ -279,20 +279,27 @@ class ParticleCanvas(QWidget):
     stopped when hidden. Colors are set per theme via set_palette().
     """
 
-    def __init__(self, parent: Optional[QWidget] = None, node_count: int = 26, seed: int = 11):
+    def __init__(self, parent: Optional[QWidget] = None, node_count: int = 30, seed: int = 11):
         super().__init__(parent)
         self.setAttribute(Qt.WA_TransparentForMouseEvents)
         self._rng = random.Random(seed)
         self._node_count = node_count
         self._nodes: List[_Node] = []
-        self._link_dist = 150.0
+        self._link_dist = 160.0
         self._accent = QColor("#1f6f62")
+        self._line_alpha = 70
+        self._node_alpha = 110
         self._timer = QTimer(self)
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._step)
 
-    def set_palette(self, accent: str) -> None:
+    def set_palette(self, accent: str, line_alpha: int = 70, node_alpha: int = 110) -> None:
+        """Light backgrounds wash the constellation out — callers pass
+        stronger alphas there so it stays visible in both themes."""
+
         self._accent = QColor(accent)
+        self._line_alpha = int(line_alpha)
+        self._node_alpha = int(node_alpha)
         self.update()
 
     def showEvent(self, event):
@@ -345,17 +352,17 @@ class ParticleCanvas(QWidget):
                 dx, dy = a.x - b.x, a.y - b.y
                 dist = math.hypot(dx, dy)
                 if dist < self._link_dist:
-                    alpha = int(70 * (1.0 - dist / self._link_dist))
+                    alpha = int(self._line_alpha * (1.0 - dist / self._link_dist))
                     if alpha <= 2:
                         continue
                     link.setAlpha(alpha)
-                    painter.setPen(QPen(link, 1))
+                    painter.setPen(QPen(link, 1.2))
                     painter.drawLine(int(a.x), int(a.y), int(b.x), int(b.y))
 
         node_color = QColor(self._accent)
         painter.setPen(Qt.NoPen)
         for n in self._nodes:
-            node_color.setAlpha(110)
+            node_color.setAlpha(self._node_alpha)
             painter.setBrush(node_color)
             painter.drawEllipse(QPoint(int(n.x), int(n.y)), int(n.r), int(n.r))
         painter.end()

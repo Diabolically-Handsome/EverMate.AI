@@ -159,3 +159,62 @@ class TestConflictMarkers:
         snippets = ["2023年5月我们去了长岛。", "她在2021年加入研究所。"]
         markers = conflict_markers(snippets)
         assert "数值" not in markers
+
+
+class TestStreamChannelArtifacts:
+    def test_channel_markers_filtered_from_stream(self):
+        f = ThinkTagFilter()
+        out = f.feed("<|chan") + f.feed("nel>thought\n") + f.feed("<channel|>嘿嘿，您这记性") + f.flush()
+        assert out == "\n嘿嘿，您这记性"
+
+    def test_mixed_think_and_channel(self):
+        f = ThinkTagFilter()
+        out = f.feed("a<think>x</think>b <|channel|>thought c") + f.flush()
+        assert "<" not in out
+        assert "a" in out and "b" in out and "c" in out
+
+
+class TestProgressCallbacks:
+    def test_ingest_reports_per_chunk(self, manager):
+        ticks = []
+        manager.store.ingest_text("第一段。\n" * 2000, source="note", progress_cb=ticks.append)
+        assert ticks, "no progress reported"
+        assert ticks == sorted(ticks)
+        assert ticks[-1] == manager.count_chunks()
+
+    def test_rebuild_reports_stages(self, manager):
+        manager.append_turn("你好", "您好")
+        stages = []
+        manager.rebuild_memory(progress_cb=lambda p: stages.append(p.get("stage")))
+        assert "reset" in stages and "core" in stages and "persona" in stages and "voice" in stages
+
+
+class TestVoiceProfile:
+    def test_no_llm_no_voice_section(self, manager):
+        manager.store.ingest_text("你好呀。", source="chat")
+        prompt = manager.build_system_prompt("你好", assistant_style="", lang="zh")
+        assert "伙伴语气" not in prompt
+
+    def test_voice_bullets_injected_outside_fence(self, manager, monkeypatch):
+        import engine.persona as persona_mod
+
+        def fake_chat(messages, model=None, timeout=0, **kw):
+            return "- 喜欢用“嘿嘿”开场\n- 称呼用户为“主人”"
+
+        monkeypatch.setattr(persona_mod, "refresh_voice", persona_mod.refresh_voice)
+        monkeypatch.setattr("ollama_client.chat", fake_chat)
+        manager.store.ingest_text("对话样本。", source="chat")
+        ok = persona_mod.refresh_voice(manager.store, manager.voice_md_path, lang="zh", model="m")
+        assert ok
+        prompt = manager.build_system_prompt("你好", assistant_style="", lang="zh")
+        assert "伙伴语气" in prompt and "嘿嘿" in prompt
+        fence = prompt.index("--- 记忆证据开始")
+        assert prompt.index("伙伴语气") < fence
+
+    def test_wipe_removes_voice(self, manager, monkeypatch):
+        from engine.storage import write_text
+
+        write_text(manager.voice_md_path, "# Voice\n\n- 测试语气\n")
+        manager.wipe_all_memory()
+        import os
+        assert not os.path.exists(manager.voice_md_path) or "测试语气" not in open(manager.voice_md_path, encoding="utf-8").read()

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import html
 import os
 import queue
 import threading
@@ -10,7 +9,7 @@ import time
 import traceback
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QColor, QTextCursor
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -25,7 +24,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -33,9 +31,9 @@ from PySide6.QtWidgets import (
 
 from i18n_qt import tr
 from memory_manager import MemoryManager
+from views.bubbles import ChatLogView
 from views.effects import (
     PulseController,
-    SmoothScroller,
     count_up,
     flash_style,
     glow_pulse,
@@ -96,12 +94,36 @@ def _is_covered_by_recommended_model(model_name: str) -> bool:
     return False
 
 
-def _escape_text(text: str) -> str:
-    return html.escape(text or "").replace("\n", "<br>")
-
-
 class InstanceLockedError(RuntimeError):
     """Another EverMate instance owns the memory directory."""
+
+
+def _messages_from_legacy_fragments(fragments) -> list[dict]:
+    """Recover {role, name, text} from the old HTML-fragment transcript format."""
+
+    import html as _html
+    import re as _re
+
+    out: list[dict] = []
+    for frag in fragments:
+        if not isinstance(frag, str):
+            continue
+        role = "user" if 'message-row user' in frag else "assistant"
+        name_m = _re.search(r'message-name">(.*?)</div>', frag, _re.DOTALL)
+        body_m = _re.search(r'message-body">(.*?)</div>', frag, _re.DOTALL)
+        if not body_m:
+            continue
+        def detag(s: str) -> str:
+            s = s.replace("<br>", "\n").replace("<br/>", "\n")
+            return _html.unescape(_re.sub(r"<[^>]+>", "", s))
+        out.append(
+            {
+                "role": role,
+                "name": detag(name_m.group(1)) if name_m else "",
+                "text": detag(body_m.group(1)),
+            }
+        )
+    return out
 
 
 class EngineWorker(QThread):
@@ -113,6 +135,7 @@ class EngineWorker(QThread):
     """
 
     chunk = Signal(str)
+    progress = Signal(object)  # structured stage payloads from engine jobs
     done = Signal(str, object)  # job kind, result
     failed = Signal(str, str, str)  # job kind, error kind, message
 
@@ -296,14 +319,13 @@ class ChatPage(QWidget):
         self.session_messages: list[dict] = []
         self.pending_files: list[str] = []
         self.memory_panel_visible = False
-        self._chat_messages_html: list[str] = []
+        self._messages: list[dict] = []
         self._animations: list[QPropertyAnimation] = []
 
         self._chat_busy = False
         self._inflight_text = ""
-        self._stream_started = False
+        self._stream_bubble = None
         self._stream_text = ""
-        self._stream_start_pos = -1
         self._ollama_reachable: bool | None = None
         self._active_jobs: dict[str, str] = {}
         self._installed_models: list[str] = []
@@ -323,6 +345,7 @@ class ChatPage(QWidget):
 
         self.worker = EngineWorker(self)
         self.worker.chunk.connect(self._on_stream_chunk)
+        self.worker.progress.connect(self._on_job_progress)
         self.worker.done.connect(self._on_job_done)
         self.worker.failed.connect(self._on_job_failed)
         self.worker.start()
@@ -502,6 +525,15 @@ class ChatPage(QWidget):
         for btn in (self.build_btn, self.analyze_btn):
             btn.setMinimumWidth(1)
 
+        from PySide6.QtWidgets import QProgressBar
+
+        self.busy_bar = QProgressBar()
+        self.busy_bar.setObjectName("BusyBar")
+        self.busy_bar.setRange(0, 0)  # indeterminate; stage text lives in the pill
+        self.busy_bar.setTextVisible(False)
+        self.busy_bar.setVisible(False)
+        sidebar_layout.addWidget(self.busy_bar)
+
         detail_row = QHBoxLayout()
         detail_row.setSpacing(8)
         self.toggle_mem_btn = QPushButton(tr(self.lang, "view_memory"))
@@ -582,13 +614,10 @@ class ChatPage(QWidget):
         header_layout.addWidget(self.status_pill)
         main_layout.addWidget(header)
 
-        self.chat_view = QTextBrowser()
-        self.chat_view.setObjectName("ChatArea")
+        self.chat_view = ChatLogView()
         self.chat_view.setAccessibleName("Chat transcript")
-        self.chat_view.setOpenExternalLinks(False)
         self.chat_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         main_layout.addWidget(self.chat_view, 1)
-        self._scroller = SmoothScroller(self.chat_view.verticalScrollBar())
         self._pill_pulse = PulseController(self.status_pill)
 
         composer = QFrame()
@@ -616,7 +645,7 @@ class ChatPage(QWidget):
         self._refresh_static_texts()
         self._refresh_pending_label()
         self._refresh_memory_status()
-        self._render_all()
+        self._rebuild_message_view()
         QTimer.singleShot(0, self.play_intro_animation)
 
     def _stat_caption_label(self, text: str) -> QLabel:
@@ -690,7 +719,7 @@ class ChatPage(QWidget):
         self._refresh_pending_label()
         self._refresh_memory_status()
 
-        self._render_all()
+        self.chat_view.set_empty_texts(tr(self.lang, "empty_title"), tr(self.lang, "empty_body"))
         if self.mem_group.isVisible():
             self._refresh_memory_panel()
         self.state_changed.emit()
@@ -698,8 +727,7 @@ class ChatPage(QWidget):
     def _on_theme_change(self, idx):
         self.theme = self.theme_combo.currentData()
         if callable(self.on_change_theme):
-            self.on_change_theme(self.theme)
-        self._render_all()
+            self.on_change_theme(self.theme)  # bubbles restyle via global QSS
         self.state_changed.emit()
 
     def _on_persona_change(self, idx):
@@ -845,20 +873,21 @@ class ChatPage(QWidget):
         lang = self.lang
         model = self._resolved_model_quiet()
         self._job_started("build", tr(self.lang, "building"))
+        report = self.worker.progress.emit
 
         def job(_emit):
             if pending:
                 stored = mm.import_files(pending)
                 if not stored:
                     return {"kind": "nothing_imported"}
-                mm.ingest_new_uploads(stored)
-                mm.analyze_memory(model=model, lang=lang)
+                mm.ingest_new_uploads(stored, progress_cb=report)
+                mm.analyze_memory(model=model, lang=lang, progress_cb=report)
                 return {"kind": "ok", "stats": {
                     "chunks": mm.count_chunks(),
                     "terms": mm.count_terms(),
                     "uploads": len(mm.list_uploads()),
                 }}
-            return {"kind": "ok", "stats": mm.rebuild_memory()}
+            return {"kind": "ok", "stats": mm.rebuild_memory(progress_cb=report)}
 
         self.worker.submit("build", job)
 
@@ -867,12 +896,36 @@ class ChatPage(QWidget):
         lang = self.lang
         model = self._resolved_model_quiet()
         self._job_started("analyze", tr(self.lang, "analyzing"))
+        report = self.worker.progress.emit
 
         def job(_emit):
-            mm.analyze_memory(model=model, lang=lang)
+            mm.analyze_memory(model=model, lang=lang, progress_cb=report)
             return {}
 
         self.worker.submit("analyze", job)
+
+    def _on_job_progress(self, payload: object):
+        """Live stage feedback from engine jobs (pill text + busy bar)."""
+
+        data = payload if isinstance(payload, dict) else {}
+        stage = str(data.get("stage", ""))
+        if stage == "ingest":
+            label = tr(
+                self.lang,
+                "progress_ingest",
+                name=str(data.get("name", "")),
+                chunks=int(data.get("chunks", 0)),
+            )
+        elif stage in ("core", "persona", "voice", "reset"):
+            label = tr(self.lang, f"progress_{stage}")
+        else:
+            return
+        # update the label of whichever heavy job is running
+        for kind in ("build", "analyze", "forget", "auto_analyze"):
+            if kind in self._active_jobs:
+                self._active_jobs[kind] = label
+                break
+        self._sync_busy_ui()
 
     def _on_forget_chat(self):
         if (
@@ -884,8 +937,8 @@ class ChatPage(QWidget):
             return
         mm = self.mm
         self.session_messages = []
-        self._chat_messages_html = []
-        self._render_all()
+        self._messages = []
+        self._rebuild_message_view()
         self._job_started("forget", tr(self.lang, "building"))
         self.worker.submit("forget", lambda _emit: mm.clear_chat_memory())
         self.state_changed.emit()
@@ -910,8 +963,8 @@ class ChatPage(QWidget):
             return
         mm = self.mm
         self.session_messages = []
-        self._chat_messages_html = []
-        self._render_all()
+        self._messages = []
+        self._rebuild_message_view()
         self._job_started("forget", tr(self.lang, "building"))
         self.worker.submit("forget", lambda _emit: mm.wipe_all_memory())
         self.state_changed.emit()
@@ -1022,8 +1075,10 @@ class ChatPage(QWidget):
         lang = self.lang
         model = self._resolved_model_quiet() or mm.preferred_model
 
+        report = self.worker.progress.emit
+
         def job(_emit):
-            mm.analyze_memory(model=model, lang=lang)
+            mm.analyze_memory(model=model, lang=lang, progress_cb=report)
             mm.mark_refreshed()
             return {}
 
@@ -1127,11 +1182,13 @@ class ChatPage(QWidget):
             # user's bubble, and put the text back into the composer.
             self._typing_timer.stop()
             self._chat_busy = False
-            self._stream_started = False
+            if self._stream_bubble is not None:
+                self.chat_view.remove_last()  # streaming bubble
+                self._stream_bubble = None
             self._stream_text = ""
-            if self._chat_messages_html:
-                self._chat_messages_html.pop()  # user bubble
-            self._render_all()
+            if self._messages and self._messages[-1].get("role") == "user":
+                self._messages.pop()
+                self.chat_view.remove_last()  # user bubble
             self.input_edit.setPlainText(self._inflight_text)
             self._inflight_text = ""
         self._job_finished(kind)
@@ -1153,27 +1210,10 @@ class ChatPage(QWidget):
 
     # ---------------- chat rendering ----------------
 
-    def _message_fragment(self, role: str, name: str, text: str) -> str:
-        role_class = "user" if role == "user" else "assistant"
-        return (
-            f'<div class="message-row {role_class}">'
-            f'<div class="message-bubble {role_class}">'
-            f'<div class="message-name">{_escape_text(name)}</div>'
-            f'<div class="message-body">{_escape_text(text)}</div>'
-            f"</div></div>"
-        )
-
     def _append_message(self, role: str, name: str, text: str):
-        fragment = self._message_fragment(role, name, text)
-        first = not self._chat_messages_html
-        self._chat_messages_html.append(fragment)
-        if first:
-            self._render_all()
-        else:
-            cursor = self.chat_view.textCursor()
-            cursor.movePosition(QTextCursor.End)
-            cursor.insertHtml(fragment)
-            self._scroll_to_bottom()
+        self._messages.append({"role": role, "name": name, "text": text})
+        self.chat_view.add_message(role, name, text)
+        self.state_changed.emit()
 
     _TYPING_GLYPHS = ("●  ○  ○", "○  ●  ○", "○  ○  ●")
 
@@ -1181,153 +1221,56 @@ class ChatPage(QWidget):
         return self._TYPING_GLYPHS[self._typing_phase % len(self._TYPING_GLYPHS)]
 
     def _on_typing_tick(self):
-        if not self._stream_started or self._stream_text:
+        if self._stream_bubble is None or self._stream_text:
             self._typing_timer.stop()
             return
         self._typing_phase += 1
-        self._update_stream_bubble()
+        self._stream_bubble.set_text(self._typing_glyph())
 
     def _begin_stream_bubble(self, name: str):
-        self._stream_started = True
         self._stream_text = ""
         self._typing_phase = 0
+        self._stream_bubble = self.chat_view.add_message("assistant", name, self._typing_glyph())
         self._typing_timer.start()
-        if not self._chat_messages_html:
-            # ensure the empty-state is cleared before we take a position
-            self._render_all()
-        cursor = self.chat_view.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self._stream_start_pos = cursor.position()
-        cursor.insertHtml(self._message_fragment("assistant", name, self._typing_glyph()))
-        self._scroll_to_bottom()
 
     def _update_stream_bubble(self):
-        if not self._stream_started:
+        if self._stream_bubble is None:
             return
-        cursor = self.chat_view.textCursor()
-        cursor.setPosition(min(self._stream_start_pos, self.chat_view.document().characterCount() - 1))
-        cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
-        cursor.removeSelectedText()
-        cursor.insertHtml(
-            self._message_fragment(
-                "assistant",
-                self._assistant_display_name(),
-                self._stream_text or self._typing_glyph(),
-            )
-        )
-        self._scroll_to_bottom()
+        self._stream_bubble.set_text(self._stream_text or self._typing_glyph())
+        self.chat_view.scroll_to_bottom()
 
     def _finish_stream_bubble(self, final_text: str):
         self._typing_timer.stop()
-        if not self._stream_started:
+        if self._stream_bubble is None:
             return
-        # Render the final text while the stream is still "started" —
-        # _update_stream_bubble guards on that flag.
-        self._stream_text = final_text
-        self._update_stream_bubble()
-        self._stream_started = False
+        self._stream_bubble.set_text(final_text)
+        self._stream_bubble = None
         self._stream_text = ""
-        self._chat_messages_html.append(
-            self._message_fragment("assistant", self._assistant_display_name(), final_text)
+        self._messages.append(
+            {"role": "assistant", "name": self._assistant_display_name(), "text": final_text}
         )
+        self.chat_view.scroll_to_bottom()
 
-    def _scroll_to_bottom(self):
-        self._scroller.to_bottom()
+    def _rebuild_message_view(self):
+        """Repopulate the transcript from state (restore, forget, rollback)."""
 
-    def _render_all(self):
-        """Full re-render (theme/lang switches, restore, rollback)."""
-
-        self.chat_view.document().setDefaultStyleSheet(self._chat_css())
-        if self._chat_messages_html or self._stream_started:
-            self.chat_view.setHtml("".join(self._chat_messages_html))
-        else:
-            title = tr(self.lang, "empty_title")
-            body = tr(self.lang, "empty_body")
-            self.chat_view.setHtml(
-                f'<div class="empty-state"><h2>{_escape_text(title)}</h2><p>{_escape_text(body)}</p></div>'
+        self.chat_view.set_empty_texts(tr(self.lang, "empty_title"), tr(self.lang, "empty_body"))
+        self.chat_view.clear_messages()
+        for msg in self._messages:
+            self.chat_view.add_message(
+                str(msg.get("role", "assistant")),
+                str(msg.get("name", "")),
+                str(msg.get("text", "")),
+                animate=False,
             )
-        if self._stream_started:
-            # A reply is streaming: re-anchor the live bubble at the new end
-            # of the document, otherwise the stale position corrupts the
-            # transcript on the next chunk.
-            cursor = self.chat_view.textCursor()
-            cursor.movePosition(QTextCursor.End)
-            self._stream_start_pos = cursor.position()
-            cursor.insertHtml(
-                self._message_fragment(
-                    "assistant", self._assistant_display_name(), self._stream_text or "…"
-                )
+        if self._stream_bubble is not None:
+            # a reply is still streaming: recreate its live bubble at the end
+            self._stream_bubble = self.chat_view.add_message(
+                "assistant",
+                self._assistant_display_name(),
+                self._stream_text or self._typing_glyph(),
+                animate=False,
             )
-        self._scroll_to_bottom()
-
-    def _chat_css(self) -> str:
-        if self.theme == "dark":
-            text = "#ecf4f0"
-            muted = "#9ba9a3"
-            title = "#f4fbf7"
-            user_bg = "#56a894"
-            user_text = "#061210"
-            assistant_bg = "#17211e"
-            assistant_text = "#ecf4f0"
-            assistant_border = "#2d3b36"
-        else:
-            text = "#17201d"
-            muted = "#65736f"
-            title = "#17201d"
-            user_bg = "#1f6f62"
-            user_text = "#ffffff"
-            assistant_bg = "#ffffff"
-            assistant_text = "#17201d"
-            assistant_border = "#d8e1dd"
-        return f"""
-        body {{
-            margin: 0;
-            padding: 22px;
-            font-family: "Avenir Next", "PingFang SC", "SF Pro Text", "Helvetica Neue";
-            font-size: 14px;
-            line-height: 1.58;
-            color: {text};
-            background: transparent;
-        }}
-        .message-row {{ display: block; margin: 0 0 14px 0; clear: both; }}
-        .message-row.user {{ text-align: right; }}
-        .message-row.assistant {{ text-align: left; }}
-        .message-bubble {{
-            display: inline-block;
-            max-width: 74%;
-            border-radius: 14px;
-            padding: 12px 14px;
-            text-align: left;
-        }}
-        .message-bubble.user {{
-            background: {user_bg};
-            color: {user_text};
-        }}
-        .message-bubble.assistant {{
-            background: {assistant_bg};
-            color: {assistant_text};
-            border: 1px solid {assistant_border};
-        }}
-        .message-name {{
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 0;
-            opacity: 0.68;
-            margin-bottom: 4px;
-        }}
-        .message-body {{ white-space: normal; }}
-        .empty-state {{
-            margin-top: 160px;
-            text-align: center;
-            color: {muted};
-        }}
-        .empty-state h2 {{
-            color: {title};
-            font-size: 24px;
-            margin: 0 0 8px 0;
-        }}
-        .empty-state p {{ margin: 0; }}
-        """
 
     # ---------------- busy / animation ----------------
 
@@ -1360,11 +1303,14 @@ class ChatPage(QWidget):
         self.status_pill.setProperty("busy", busy)
         self.status_pill.style().unpolish(self.status_pill)
         self.status_pill.style().polish(self.status_pill)
-        # Breathing pulse while anything is in flight.
+        # Breathing pulse while anything is in flight; progress bar for the
+        # heavy memory jobs so nobody is left staring at a frozen sidebar.
         if busy:
             self._pill_pulse.start()
         else:
             self._pill_pulse.stop()
+        heavy = any(k in self._active_jobs for k in ("build", "analyze", "forget", "auto_analyze"))
+        self.busy_bar.setVisible(heavy)
 
     def play_intro_animation(self):
         self._fade_in_widget(self.sidebar, duration=260, start=0.0)
@@ -1413,7 +1359,7 @@ class ChatPage(QWidget):
             "persona": self.persona,
             "model_key": self.model_combo.currentData() or "",
             "input_text": self.input_edit.toPlainText(),
-            "chat_messages_html": self._chat_messages_html,
+            "chat_messages": self._messages,
             "session_messages": self.session_messages,
             "pending_files": [p for p in self.pending_files if p and os.path.exists(p)],
             "memory_panel_visible": bool(self.mem_group.isVisible()),
@@ -1437,16 +1383,21 @@ class ChatPage(QWidget):
         if model_key:
             self._set_combo_by_data(self.model_combo, model_key)
 
-        raw_fragments = state.get("chat_messages_html", [])
-        if isinstance(raw_fragments, list) and raw_fragments:
-            self._chat_messages_html = [str(x) for x in raw_fragments if isinstance(x, str)]
-        self._render_all()
-        if not self._chat_messages_html:
-            # Pre-rework app_state.json stored the transcript only as a full
-            # HTML document; show it read-only rather than dropping it.
-            legacy_html = state.get("chat_html", "")
-            if isinstance(legacy_html, str) and legacy_html.strip():
-                self.chat_view.setHtml(legacy_html)
+        raw_messages_new = state.get("chat_messages", [])
+        if isinstance(raw_messages_new, list) and raw_messages_new:
+            self._messages = [
+                {
+                    "role": str(m.get("role", "assistant")),
+                    "name": str(m.get("name", "")),
+                    "text": str(m.get("text", "")),
+                }
+                for m in raw_messages_new
+                if isinstance(m, dict) and str(m.get("text", "")).strip()
+            ]
+        elif isinstance(state.get("chat_messages_html"), list):
+            # Previous version stored HTML fragments; recover the plain text.
+            self._messages = _messages_from_legacy_fragments(state["chat_messages_html"])
+        self._rebuild_message_view()
 
         input_text = state.get("input_text", "")
         if isinstance(input_text, str):

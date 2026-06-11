@@ -104,6 +104,11 @@ TEXTS = {
         "instance_locked_title": "EverMate 已在运行",
         "instance_locked_body": "检测到另一个 EverMate 实例正在使用同一记忆目录。请先关闭它再启动新的实例。",
         "uploads_dialog_title": "已导入文档",
+        "progress_reset": "正在重置索引…",
+        "progress_ingest": "正在索引 {name}：{chunks} 片段",
+        "progress_core": "正在更新核心记忆…",
+        "progress_persona": "正在分析用户画像…",
+        "progress_voice": "正在学习伙伴语气…",
     },
     "en": {
         "welcome_to": "Welcome to",
@@ -207,6 +212,11 @@ TEXTS = {
         "instance_locked_title": "EverMate is already running",
         "instance_locked_body": "Another EverMate instance is using the same memory directory. Close it before starting a new one.",
         "uploads_dialog_title": "Imported documents",
+        "progress_reset": "Resetting index…",
+        "progress_ingest": "Indexing {name}: {chunks} chunks",
+        "progress_core": "Updating core memory…",
+        "progress_persona": "Analyzing persona…",
+        "progress_voice": "Learning companion voice…",
     },
 }
 

@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         stack.setStackingMode(QStackedLayout.StackAll)
 
         self.welcome_canvas = ParticleCanvas(w)
-        self.welcome_canvas.set_palette(THEME_ACCENTS.get(self.theme, "#1f6f62"))
+        self._apply_canvas_palette()
 
         content = QWidget(w)
         content.setObjectName("WelcomeContent")
@@ -162,9 +162,18 @@ class MainWindow(QMainWindow):
         self.theme = theme
         qss = _load_stylesheet(theme) + "\n" + EXTRA_QSS
         self.setStyleSheet(qss)
+        self._apply_canvas_palette()
+
+    def _apply_canvas_palette(self):
         canvas = getattr(self, "welcome_canvas", None)
-        if canvas is not None:
-            canvas.set_palette(THEME_ACCENTS.get(theme, "#1f6f62"))
+        if canvas is None:
+            return
+        accent = THEME_ACCENTS.get(self.theme, "#1f6f62")
+        if self.theme == "light":
+            # Light backgrounds wash the constellation out; paint it bolder.
+            canvas.set_palette(accent, line_alpha=120, node_alpha=190)
+        else:
+            canvas.set_palette(accent)
 
     def _fade_in_widget(self, widget: QWidget, duration: int = 240):
         effect = QGraphicsOpacityEffect(widget)

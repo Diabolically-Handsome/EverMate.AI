@@ -397,18 +397,22 @@ class MemoryStore:
 
     # ---------------- ingestion ----------------
 
-    def ingest_file(self, path: str, source: str) -> int:
+    def ingest_file(self, path: str, source: str, progress_cb=None) -> int:
         """Ingest one document inside a single transaction with buffered
-        vault writes — bulk imports used to pay one commit per chunk."""
+        vault writes — bulk imports used to pay one commit per chunk.
+
+        `progress_cb(chunks_done)` fires per chunk so the UI can show
+        progress instead of leaving the user staring at a frozen label.
+        """
 
         ext = os.path.splitext(path)[1].lower()
         vault_buffer: List[str] = []
         made = 0
         try:
             if ext == ".txt":
-                made = self._ingest_txt_stream(path, source, vault_buffer)
+                made = self._ingest_txt_stream(path, source, vault_buffer, progress_cb)
             elif ext == ".docx":
-                made = self._ingest_docx(path, source, vault_buffer)
+                made = self._ingest_docx(path, source, vault_buffer, progress_cb)
             self.conn.commit()
         except BaseException:
             self.conn.rollback()
@@ -417,7 +421,12 @@ class MemoryStore:
             append_text(self.vault_md_path, "".join(vault_buffer))
         return made
 
-    def _ingest_txt_stream(self, path: str, source: str, vault_buffer: List[str]) -> int:
+    @staticmethod
+    def _tick(progress_cb, made: int) -> None:
+        if progress_cb is not None:
+            progress_cb(made)
+
+    def _ingest_txt_stream(self, path: str, source: str, vault_buffer: List[str], progress_cb=None) -> int:
         made = 0
         acc: List[str] = []
         acc_len = 0
@@ -430,12 +439,14 @@ class MemoryStore:
                 if acc_len >= self.chunk_chars:
                     if self.add_chunk("".join(acc), source, vault_buffer) >= 0:
                         made += 1
+                        self._tick(progress_cb, made)
                     acc, acc_len = [], 0
         if acc and self.add_chunk("".join(acc), source, vault_buffer) >= 0:
             made += 1
+            self._tick(progress_cb, made)
         return made
 
-    def _ingest_docx(self, path: str, source: str, vault_buffer: List[str]) -> int:
+    def _ingest_docx(self, path: str, source: str, vault_buffer: List[str], progress_cb=None) -> int:
         try:
             from docx import Document  # type: ignore
         except Exception as e:
@@ -457,12 +468,14 @@ class MemoryStore:
             if acc_len >= self.chunk_chars:
                 if self.add_chunk("".join(acc), source, vault_buffer) >= 0:
                     made += 1
+                    self._tick(progress_cb, made)
                 acc, acc_len = [], 0
         if acc and self.add_chunk("".join(acc), source, vault_buffer) >= 0:
             made += 1
+            self._tick(progress_cb, made)
         return made
 
-    def ingest_text(self, text: str, source: str) -> int:
+    def ingest_text(self, text: str, source: str, progress_cb=None) -> int:
         if not text:
             return 0
         vault_buffer: List[str] = []
@@ -480,6 +493,7 @@ class MemoryStore:
                         piece = text[start:end]
                 if self.add_chunk(piece, source, vault_buffer) >= 0:
                     made += 1
+                    self._tick(progress_cb, made)
                 start = end
             self.conn.commit()
         except BaseException:
@@ -488,6 +502,29 @@ class MemoryStore:
         if vault_buffer:
             append_text(self.vault_md_path, "".join(vault_buffer))
         return made
+
+    def sample_chunks_text(self, max_chunks: int = 14, max_chars: int = 12000) -> str:
+        """Evenly spaced sample across the whole corpus (voice/style analysis
+        needs breadth, not just the most recent chunks)."""
+
+        rows = self.conn.execute("SELECT id, path FROM chunks ORDER BY id").fetchall()
+        if not rows:
+            return ""
+        step = max(1, len(rows) // max_chunks)
+        texts: List[str] = []
+        total = 0
+        for row in rows[::step][:max_chunks]:
+            t = read_text(os.path.join(self.memory_dir, str(row["path"]))).strip()
+            if not t:
+                continue
+            budget = max_chars - total
+            if budget <= 0:
+                break
+            if len(t) > budget:
+                t = t[:budget]
+            texts.append(t)
+            total += len(t)
+        return "\n\n".join(texts)
 
     # ---------------- uploads ----------------
 
