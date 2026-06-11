@@ -7,12 +7,15 @@ from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGraphicsOpacityEffect, QMessageBox, QStackedWidget
+    QGraphicsOpacityEffect, QMessageBox, QStackedLayout, QStackedWidget
 )
 from engine.storage import write_text
 from i18n_qt import tr, APP_TITLE
 from runtime_paths import resource_path, user_app_support_root
 from .chat import ChatPage, InstanceLockedError
+from .effects import ParticleCanvas, fade_in, slide_fade_in
+
+THEME_ACCENTS = {"light": "#1f6f62", "dark": "#56a894"}
 
 def _load_stylesheet(theme: str) -> str:
     fname = resource_path("assets", f"style_{theme}.qss")
@@ -94,12 +97,30 @@ class MainWindow(QMainWindow):
         self.apply_theme(self.theme)
         self.resize(1180, 760)
         self._restore_state()
-        QTimer.singleShot(0, lambda: self._fade_in_widget(self.stack.currentWidget(), duration=300))
+
+        def intro():
+            self._fade_in_widget(self.stack.currentWidget(), duration=300)
+            if self.stack.currentWidget() is self.page_welcome:
+                self.play_welcome_entrance()
+
+        QTimer.singleShot(0, intro)
 
     def _build_welcome(self) -> QWidget:
         w = QWidget()
         w.setObjectName("start-page")
-        v = QVBoxLayout(w)
+
+        # Two stacked layers: the "memory constellation" canvas behind, the
+        # text content in front.
+        stack = QStackedLayout(w)
+        stack.setStackingMode(QStackedLayout.StackAll)
+
+        self.welcome_canvas = ParticleCanvas(w)
+        self.welcome_canvas.set_palette(THEME_ACCENTS.get(self.theme, "#1f6f62"))
+
+        content = QWidget(w)
+        content.setObjectName("WelcomeContent")
+        content.setAttribute(Qt.WA_StyledBackground, False)
+        v = QVBoxLayout(content)
         v.setContentsMargins(44,44,44,44)
         v.setSpacing(12)
         title = QLabel(APP_TITLE)
@@ -122,13 +143,28 @@ class MainWindow(QMainWindow):
         v.addSpacing(16)
         v.addWidget(btn, alignment=Qt.AlignLeft)
         v.addStretch(2)
+
+        stack.addWidget(content)
+        stack.addWidget(self.welcome_canvas)
+        stack.setCurrentWidget(content)
+
+        self._welcome_entrance_widgets = [title, subtitle, note, btn]
         return w
+
+    def play_welcome_entrance(self) -> None:
+        """Staggered entrance for the welcome page text."""
+
+        for i, widget in enumerate(getattr(self, "_welcome_entrance_widgets", [])):
+            slide_fade_in(widget, dy=22, duration=420, delay=90 * i, keep=self._animations)
 
     # --- theme & language ---
     def apply_theme(self, theme: str):
         self.theme = theme
         qss = _load_stylesheet(theme) + "\n" + EXTRA_QSS
         self.setStyleSheet(qss)
+        canvas = getattr(self, "welcome_canvas", None)
+        if canvas is not None:
+            canvas.set_palette(THEME_ACCENTS.get(theme, "#1f6f62"))
 
     def _fade_in_widget(self, widget: QWidget, duration: int = 240):
         effect = QGraphicsOpacityEffect(widget)
@@ -153,14 +189,15 @@ class MainWindow(QMainWindow):
         self.lang = lang
         # only welcome page text uses i18n here; chat page handles itself
         # rebuild welcome page quickly to update texts
-        idx = self.stack.indexOf(self.page_welcome)
+        was_current = self.stack.currentWidget() is self.page_welcome
         self.stack.removeWidget(self.page_welcome)
         self.page_welcome.deleteLater()
         self.page_welcome = self._build_welcome()
         self.stack.insertWidget(0, self.page_welcome)
-        if idx == 0:
+        if was_current:
             self.stack.setCurrentIndex(0)
             self._fade_in_widget(self.page_welcome, duration=220)
+            QTimer.singleShot(0, self.play_welcome_entrance)
 
     def _on_change_theme(self, theme: str):
         self.apply_theme(theme)
