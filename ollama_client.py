@@ -103,7 +103,13 @@ def _partial_suffix_len(text: str, tag: str) -> int:
 
 
 class ThinkTagFilter:
-    """Stateful filter that drops <think>…</think> spans from a token stream."""
+    """Stateful stream sanitizer.
+
+    Drops <think>…</think> spans AND gpt-oss reasoning-channel artifacts
+    ("<|channel>thought", "<channel|>", …) from a token stream — the
+    non-stream path cleans these in clean_response_text, and users must
+    never see them in streamed replies either.
+    """
 
     OPEN = "<think>"
     CLOSE = "</think>"
@@ -112,10 +118,28 @@ class ThinkTagFilter:
     # form has a different length (e.g. 'İ').
     _OPEN_RE = re.compile(re.escape(OPEN), re.IGNORECASE)
     _CLOSE_RE = re.compile(re.escape(CLOSE), re.IGNORECASE)
+    _CHANNEL_RE = re.compile(r"<\|?channel\|?>(thought)?[ \t]*", re.IGNORECASE)
+    # Longest channel artifact we might have to hold back at a chunk border.
+    _HOLDBACK = len("<|channel|>thought")
 
     def __init__(self):
         self._buf = ""
         self._in_think = False
+
+    def _emit(self, text: str) -> str:
+        return self._CHANNEL_RE.sub("", text)
+
+    @staticmethod
+    def _channel_partial_len(text: str) -> int:
+        """Longest suffix of `text` that could still grow into an artifact."""
+
+        max_len = min(len(text), ThinkTagFilter._HOLDBACK - 1)
+        for length in range(max_len, 0, -1):
+            tail = text[-length:].lower()
+            for proto in ("<|channel|>thought", "<|channel>thought", "<channel|>"):
+                if proto.startswith(tail):
+                    return length
+        return 0
 
     def feed(self, delta: str) -> str:
         self._buf += delta or ""
@@ -126,17 +150,20 @@ class ThinkTagFilter:
                 if not m:
                     keep = _partial_suffix_len(self._buf, self.CLOSE)
                     self._buf = self._buf[len(self._buf) - keep:] if keep else ""
-                    return "".join(out)
+                    return self._emit("".join(out))
                 self._buf = self._buf[m.end():]
                 self._in_think = False
                 continue
             m = self._OPEN_RE.search(self._buf)
             if not m:
-                keep = _partial_suffix_len(self._buf, self.OPEN)
+                keep = max(
+                    _partial_suffix_len(self._buf, self.OPEN),
+                    self._channel_partial_len(self._buf),
+                )
                 cut = len(self._buf) - keep
                 out.append(self._buf[:cut])
                 self._buf = self._buf[cut:]
-                return "".join(out)
+                return self._emit("".join(out))
             out.append(self._buf[: m.start()])
             self._buf = self._buf[m.end():]
             self._in_think = True
@@ -149,7 +176,7 @@ class ThinkTagFilter:
             self._in_think = False
             return ""
         out, self._buf = self._buf, ""
-        return out
+        return self._emit(out)
 
 
 def _error_from_response(r: requests.Response, model: str) -> OllamaError:
