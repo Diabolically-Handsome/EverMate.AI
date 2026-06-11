@@ -69,15 +69,35 @@ A privacy-first companion needs a forget button. EverMate has three:
 > in `legacy_quanzhi_heuristics.py` and is no longer used by the app.
 
 The current engine is corpus-agnostic by construction (no entity lists, no
-per-question heuristics). The benchmark scripts under `scripts/` still run
-against it; fresh numbers on a public-domain corpus will be published once
-re-measured. Until then, this section intentionally makes no quantitative
-claims.
+per-question heuristics), and the numbers below were re-measured on
+**public-domain corpora** with a deliberately conservative methodology.
+
+### Re-measured results (2026-06-11)
+
+| Corpus | Size | Retrieval hit@6 (200 probes) | Evidence contains answer | End-to-end accuracy (60 cloze) |
+| --- | --- | --- | --- | --- |
+| 《紅樓夢》 Dream of the Red Chamber (zh) | 906K chars | **99.50%** | **100%** | **93.33%** |
+| Moby-Dick (en) | 1.22M chars | **100%** | **100%** | **98.33%** |
+
+- Answer model: `gpt-oss:20b` (temperature 0), fully local.
+- Question generation is **deterministic and corpus-derived** (seeded
+  sampling; targets chosen by document-frequency bounds + PMI cohesion for
+  Chinese) — no hand-written question bank, no LLM question writer.
+- Scoring is **exact string containment** — no LLM judge. This is strict:
+  manual inspection shows 3 of the 4 Chinese misses are near-hits
+  (traditional/simplified script mismatch or partial-name answers), so the
+  true end-to-end number is slightly *understated*.
+- Reproduce with `scripts/benchmark_public_corpus.py` (command in each
+  report under `reports/`); corpora download free from Project Gutenberg
+  (#24264, #2701).
 
 ### What the benchmarks measure
-- **Cloze recall:** can the system retrieve and complete an exact fact from long context?
-- **Grounded short QA:** can it answer short factual questions without drifting?
-- **Multi-hop consistency:** can it combine evidence across chunks without mixing nearby events?
+- **Retrieval hit rate:** does BM25 surface the source passage for a
+  blanked-out sentence? (No LLM involved.)
+- **Cloze recall (end-to-end):** can the local model fill in the exact
+  blanked term from the injected evidence?
+- **Multi-hop consistency** across chunks remains future work for the clean
+  engine (the old multi-hop numbers were part of the withdrawn set).
 
 ### Privacy note for benchmark runs
 `scripts/validate_memory_accuracy.py` supports a **cloud judge** (e.g.
