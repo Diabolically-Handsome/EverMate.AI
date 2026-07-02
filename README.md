@@ -1,4 +1,7 @@
 # 🐾 EverMate.AI — Your Local AI Companion
+
+[![CI](https://github.com/Diabolically-Handsome/EverMate.AI/actions/workflows/ci.yml/badge.svg)](https://github.com/Diabolically-Handsome/EverMate.AI/actions/workflows/ci.yml)
+
 **Privacy-first · Works offline · Actually remembers you over long-term conversations**
 
 > _"An AI can be a long‑term confidant — if it can **remember**, **protect**, and **retrieve**."_
@@ -16,6 +19,24 @@
   <a href="#-project-layout">Layout</a> ·
   <a href="#-contributing">Contributing</a>
 </p>
+
+<p align="center">
+  <img src="docs/media/demo.gif" alt="EverMate demo — chat with local long-term memory" width="720" />
+</p>
+
+<p align="center">
+  <img src="docs/media/chat-light.png" alt="Chat workspace (light)" width="49%" />
+  <img src="docs/media/memory-panel.png" alt="Memory panel" width="49%" />
+</p>
+
+<details>
+<summary>More screenshots (dark theme, welcome screen)</summary>
+<p align="center">
+  <img src="docs/media/chat-dark.png" alt="Chat workspace (dark)" width="49%" />
+  <img src="docs/media/welcome-dark.png" alt="Welcome (dark)" width="49%" />
+  <img src="docs/media/welcome-light.png" alt="Welcome (light)" width="49%" />
+</p>
+</details>
 
 ---
 
@@ -120,7 +141,7 @@ If no Ollama server is detected, the app shows step-by-step install instructions
 ### Option B — Run the tests
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q     # 176 tests, no network, no Ollama needed
+python -m pytest tests/ -q     # 183 tests, no network, no Ollama needed
 ```
 
 ### Benchmark Example
@@ -288,7 +309,7 @@ i18n_qt.py              # zh/en strings
 memory_manager.py       # compatibility shim → engine/
 legacy_quanzhi_heuristics.py  # retired overfitted engine (reference only)
 scripts/                # benchmark scripts, DMG build
-tests/                  # pytest suite (176 tests; no network, no Ollama)
+tests/                  # pytest suite (183 tests; no network, no Ollama)
 
 <memory root>/          # ~/Library/Application Support/EverMate/memory
   index.sqlite          # inverted index & stats
